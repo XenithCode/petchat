@@ -20,18 +20,29 @@ class NetworkManager(QObject):
     ai_emotion_received = pyqtSignal(dict)
     ai_memories_received = pyqtSignal(list)
     ai_request_received = pyqtSignal()
+    typing_status_changed = pyqtSignal(bool)
     
-    def __init__(self, is_host: bool = False, host_ip: str = "127.0.0.1", port: int = 8888):
+    def __init__(self, is_host: bool = False, host_ip: str = "127.0.0.1", port: int = 8888,
+                 use_relay: bool = False, relay_host: str = "", relay_port: int = 0, room_id: str = "default"):
         super().__init__()
         self.is_host = is_host
         self.host_ip = host_ip
         self.port = port
+        self.use_relay = use_relay
+        self.relay_host = relay_host or host_ip
+        self.relay_port = relay_port or port
+        self.room_id = room_id
+        self._relay_role = "host" if is_host else "guest"
         
         self.socket: Optional[socket.socket] = None
         self.client_socket: Optional[socket.socket] = None
         
         self.running = False
         self._mutex = QMutex()
+        self._reconnect_thread: Optional[threading.Thread] = None
+        self._reconnect_active = False
+        self._reconnect_delay_base = 1.0
+        self._reconnect_delay_max = 30.0
         
         # Heartbeat settings
         self.last_heartbeat = 0
@@ -41,6 +52,9 @@ class NetworkManager(QObject):
 
     def start_host(self):
         """Start as host (server)"""
+        if self.use_relay:
+            self._start_relay(role="host")
+            return
         if not self.is_host:
             self.error_occurred.emit("Cannot start as host when initialized as guest")
             return
@@ -82,28 +96,107 @@ class NetworkManager(QObject):
 
     def connect_as_guest(self):
         """Connect as guest (client)"""
+        if self.use_relay:
+            self._start_relay(role="guest")
+            return
         if self.is_host:
             self.error_occurred.emit("Cannot connect as guest when initialized as host")
             return
-        
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.settimeout(5.0)  # Connect timeout
-        
+
         def connect_task():
-            try:
-                self.socket.connect((self.host_ip, self.port))
-                self.socket.settimeout(None)  # Remove timeout for blocking recv
-                self.running = True
-                
-                self.connection_status_changed.emit(True, f"Connected to host at {self.host_ip}:{self.port}")
-                self._start_io_threads(self.socket)
-                
-            except Exception as e:
-                self.error_occurred.emit(f"Failed to connect: {str(e)}")
-                self.connection_status_changed.emit(False, "Connection failed")
-        
-        # Connect in a thread to avoid freezing UI
+            self._connect_guest_with_retries(initial=True)
+
         threading.Thread(target=connect_task, daemon=True).start()
+
+    def _connect_guest_once(self) -> bool:
+        """Single guest connect attempt, returns True if success."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        try:
+            sock.connect((self.host_ip, self.port))
+            sock.settimeout(None)
+            self.socket = sock
+            self.running = True
+            self.connection_status_changed.emit(True, f"Connected to host at {self.host_ip}:{self.port}")
+            self._start_io_threads(self.socket)
+            return True
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to connect: {str(e)}")
+            self.connection_status_changed.emit(False, "Connection failed")
+            try:
+                sock.close()
+            except Exception:
+                pass
+            return False
+
+    def _connect_guest_with_retries(self, initial: bool = False):
+        """Guest auto reconnect loop with exponential backoff."""
+        delay = self._reconnect_delay_base
+        first_attempt = True
+        self._reconnect_active = True
+
+        while self._reconnect_active and not self.running:
+            if not first_attempt or not initial:
+                self.connection_status_changed.emit(False, f"尝试重新连接 Host，中断后等待 {int(delay)} 秒...")
+                time.sleep(delay)
+                delay = min(delay * 2, self._reconnect_delay_max)
+
+            first_attempt = False
+
+            if self._connect_guest_once():
+                self._reconnect_active = False
+                break
+
+    def _start_relay(self, role: str):
+        self._relay_role = role
+
+        def connect_task():
+            self._connect_relay_with_retries(initial=True)
+
+        threading.Thread(target=connect_task, daemon=True).start()
+
+    def _connect_relay_once(self) -> bool:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        try:
+            sock.connect((self.relay_host, self.relay_port))
+            sock.settimeout(None)
+            self.socket = sock
+            self.running = True
+            self.connection_status_changed.emit(True, f"Connected to relay at {self.relay_host}:{self.relay_port} as {self._relay_role}")
+            self._start_io_threads(self.socket)
+            self._send_packet({
+                "type": "relay_register",
+                "role": self._relay_role,
+                "room_id": self.room_id,
+                "timestamp": datetime.now().isoformat()
+            })
+            return True
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to connect relay: {str(e)}")
+            self.connection_status_changed.emit(False, "Relay connection failed")
+            try:
+                sock.close()
+            except Exception:
+                pass
+            return False
+
+    def _connect_relay_with_retries(self, initial: bool = False):
+        delay = self._reconnect_delay_base
+        first_attempt = True
+        self._reconnect_active = True
+
+        while self._reconnect_active and not self.running:
+            if not first_attempt or not initial:
+                self.connection_status_changed.emit(False, f"尝试重新连接中转服务器，等待 {int(delay)} 秒...")
+                time.sleep(delay)
+                delay = min(delay * 2, self._reconnect_delay_max)
+
+            first_attempt = False
+
+            if self._connect_relay_once():
+                self._reconnect_active = False
+                break
 
     def _start_io_threads(self, sock: socket.socket):
         """Start Receive and Heartbeat threads"""
@@ -150,6 +243,13 @@ class NetworkManager(QObject):
         """Send an explicit AI suggestion request to host"""
         return self._send_packet({
             "type": "ai_request",
+            "timestamp": datetime.now().isoformat()
+        })
+
+    def send_typing(self, is_typing: bool) -> bool:
+        return self._send_packet({
+            "type": "typing",
+            "is_typing": bool(is_typing),
             "timestamp": datetime.now().isoformat()
         })
 
@@ -237,6 +337,11 @@ class NetworkManager(QObject):
                 self.ai_memories_received.emit(memories)
         elif msg_type == "ai_request":
             self.ai_request_received.emit()
+        elif msg_type == "typing":
+            is_typing = bool(message.get("is_typing", False))
+            self.typing_status_changed.emit(is_typing)
+        elif msg_type == "relay_register":
+            pass
 
     def _heartbeat_loop(self, sock: socket.socket):
         """Send heartbeats and check for timeouts"""
@@ -258,14 +363,23 @@ class NetworkManager(QObject):
         """Clean up resources on disconnect"""
         if not self.running:
             return
-            
+
         self.running = False
         self.connection_status_changed.emit(False, "Disconnected")
         self.stop()
 
+        if not self._reconnect_active:
+            if self.use_relay:
+                self._reconnect_thread = threading.Thread(target=self._connect_relay_with_retries, daemon=True)
+                self._reconnect_thread.start()
+            elif not self.is_host:
+                self._reconnect_thread = threading.Thread(target=self._connect_guest_with_retries, daemon=True)
+                self._reconnect_thread.start()
+
     def stop(self):
         """Stop network communication"""
         self.running = False
+        self._reconnect_active = False
         try:
             if self.client_socket:
                 self.client_socket.close()

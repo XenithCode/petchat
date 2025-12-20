@@ -11,6 +11,7 @@ from core.ai_service import AIService
 from core.config_manager import ConfigManager
 from core.window_manager import window_manager
 from ui.main_window import MainWindow
+from ui.user_profile_dialog import UserProfileDialog
 from ui.api_config_dialog import APIConfigDialog
 from config.settings import Settings
 from ui.theme import Theme
@@ -22,6 +23,10 @@ class RoleSelectionDialog(QDialog):
         self.selected_role = "host"
         self.host_ip = ""
         self.port_text = str(Settings.DEFAULT_PORT)
+        self.use_relay = False
+        self.relay_host = ""
+        self.relay_port_text = ""
+        self.room_id = "default"
         self.setWindowTitle("选择启动模式")
         self.setModal(True)
         self.setMinimumWidth(420)
@@ -39,7 +44,7 @@ class RoleSelectionDialog(QDialog):
         )
         layout.addWidget(title)
         
-        hint = QLabel("请选择您的角色：房主负责创建房间，访客可以加入现有房间。")
+        hint = QLabel("请选择您的角色：房主负责创建房间，访客可以加入现有房间。可选使用中转服务器实现跨网段连接。")
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px;")
         layout.addWidget(hint)
@@ -58,7 +63,7 @@ class RoleSelectionDialog(QDialog):
         role_layout.addStretch()
         layout.addLayout(role_layout)
 
-        ip_label = QLabel("Host IP（仅 Guest 需要填写）")
+        ip_label = QLabel("Host IP（仅 Guest 需要填写，或中转服务器地址）")
         self.ip_input = QLineEdit()
         self.ip_input.setPlaceholderText("例如 192.168.1.100")
         self.ip_input.setEnabled(False)
@@ -70,6 +75,32 @@ class RoleSelectionDialog(QDialog):
         self.port_input = QLineEdit(self.port_text)
         layout.addWidget(port_label)
         layout.addWidget(self.port_input)
+
+        relay_label = QLabel("中转服务器配置（可选，用于不在同一网段时）")
+        relay_label.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px;")
+        layout.addWidget(relay_label)
+
+        relay_layout = QHBoxLayout()
+        self.relay_checkbox = QRadioButton("使用中转服务器")
+        relay_layout.addWidget(self.relay_checkbox)
+        layout.addLayout(relay_layout)
+
+        relay_host_label = QLabel("中转服务器地址")
+        self.relay_host_input = QLineEdit()
+        self.relay_host_input.setPlaceholderText("例如 your-vps.com 或 1.2.3.4")
+        relay_port_label = QLabel("中转端口")
+        self.relay_port_input = QLineEdit()
+        self.relay_port_input.setPlaceholderText("默认 9000")
+        room_id_label = QLabel("房间ID（Host 与 Guest 需一致）")
+        self.room_id_input = QLineEdit()
+        self.room_id_input.setPlaceholderText("例如 my-room-1")
+
+        layout.addWidget(relay_host_label)
+        layout.addWidget(self.relay_host_input)
+        layout.addWidget(relay_port_label)
+        layout.addWidget(self.relay_port_input)
+        layout.addWidget(room_id_label)
+        layout.addWidget(self.room_id_input)
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -101,6 +132,10 @@ class RoleSelectionDialog(QDialog):
         def on_ok():
             self.host_ip = self.ip_input.text().strip()
             self.port_text = self.port_input.text().strip() or str(Settings.DEFAULT_PORT)
+            self.use_relay = self.relay_checkbox.isChecked()
+            self.relay_host = self.relay_host_input.text().strip()
+            self.relay_port_text = self.relay_port_input.text().strip()
+            self.room_id = self.room_id_input.text().strip() or "default"
             self.accept()
 
         def on_cancel():
@@ -130,20 +165,30 @@ class PetChatApp:
         self.host_ip = host_ip
         self.port = port
         self.from_cli_args = from_cli_args
+        self.use_relay = False
+        self.relay_host = ""
+        self.relay_port = 0
+        self.room_id = "default"
         print(f"[DEBUG] Configuration: is_host={is_host}, host_ip={host_ip}, port={port}, from_cli_args={from_cli_args}")
         
         print("[DEBUG] Creating ConfigManager...")
         self.config_manager = ConfigManager()
         print("[DEBUG] ConfigManager created")
+
+        print("[DEBUG] Initializing user profile...")
+        self.current_user_name, self.current_user_avatar = self._ensure_user_profile()
+        print(f"[DEBUG] User profile: name={self.current_user_name}, avatar={self.current_user_avatar}")
         
         print("[DEBUG] Creating Database...")
         self.db = Database()
         print("[DEBUG] Database created")
+        self.current_session_id = "default"
+        self.loaded_message_limit = 50
         
-        self.ai_service = None  # Only host has AI service
+        self.ai_service = None
         
         print("[DEBUG] Creating MainWindow...")
-        self.window = MainWindow(is_host=is_host)
+        self.window = MainWindow(is_host=is_host, user_name=self.current_user_name)
         print("[DEBUG] MainWindow created")
         
         print("[DEBUG] Registering window...")
@@ -153,6 +198,35 @@ class PetChatApp:
         self.app.aboutToQuit.connect(lambda: window_manager().unregister_window(self.window_id))
         self.message_count = 0
         print("[DEBUG] PetChatApp.__init__ completed")
+        self._load_messages(reset=True)
+
+    def _ensure_user_profile(self):
+        name = self.config_manager.get_user_name()
+        avatar = self.config_manager.get_user_avatar()
+        if name and 2 <= len(name.strip()) <= 20:
+            return name.strip(), avatar or ""
+
+        dialog = UserProfileDialog(current_name=name or "", current_avatar=avatar or "")
+        result = dialog.exec()
+        if result != QDialog.DialogCode.Accepted:
+            sys.exit(0)
+        final_name = dialog.user_name()
+        final_avatar = dialog.avatar()
+        self.config_manager.set_user_profile(final_name, final_avatar)
+        return final_name, final_avatar
+
+    def _load_messages(self, reset: bool = False):
+        if reset:
+            self.loaded_message_limit = 50
+        try:
+            messages = self.db.get_recent_messages(self.loaded_message_limit, session_id=self.current_session_id)
+            self.window.clear_messages()
+            for msg in messages:
+                ts = msg.get("timestamp", "")
+                display_ts = ts[11:16] if len(ts) >= 16 and ts[10] == "T" else ts[-5:]
+                self.window.add_message(msg["sender"], msg["content"], display_ts)
+        except Exception as e:
+            print(f"Error loading message history: {e}")
     
     def _setup_connections(self):
         """Setup signal/slot connections"""
@@ -166,6 +240,9 @@ class PetChatApp:
         
         self.window.message_sent.connect(self._on_message_sent)
         self.window.ai_requested.connect(self._on_ai_requested)
+        self.window.conversation_selected.connect(self._on_conversation_selected)
+        self.window.load_more_requested.connect(self._on_load_more_requested)
+        self.window.typing_changed.connect(self._on_local_typing_changed)
         
         if self.is_host:
             self.window.api_config_changed.connect(self._on_api_config_applied)
@@ -191,6 +268,18 @@ class PetChatApp:
         """Handle suggestion sent from peer"""
         self.window.show_suggestion(suggestion)
 
+    def _on_conversation_selected(self, session_id: str):
+        self.current_session_id = session_id or "default"
+        self._load_messages(reset=True)
+
+    def _on_load_more_requested(self):
+        self.loaded_message_limit += 50
+        self._load_messages(reset=True)
+
+    def _on_local_typing_changed(self, is_typing: bool):
+        if self.network:
+            self.network.send_typing(is_typing)
+
     def _on_remote_emotion(self, emotion_scores: dict):
         """Handle emotion scores sent from peer"""
         self.window.update_emotion(emotion_scores)
@@ -203,6 +292,9 @@ class PetChatApp:
         """Handle explicit AI request forwarded from guest to host"""
         if self.is_host and self.ai_service:
             self._on_ai_requested()
+
+    def _on_typing_status(self, is_typing: bool):
+        self.window.show_typing_status(is_typing)
 
     def _init_ai_service(self):
         """Initialize AI service with config"""
@@ -258,10 +350,7 @@ class PetChatApp:
     
     def _on_message_received(self, sender: str, content: str):
         """Handle received message"""
-        # Add to database
-        self.db.add_message(sender, content)
-        
-        # Add to UI
+        self.db.add_message(sender, content, session_id=self.current_session_id)
         self.window.add_message(sender, content)
         
         # Trigger AI analysis (host only)
@@ -274,8 +363,7 @@ class PetChatApp:
         # Send via network
         self.network.send_message(sender, content)
         
-        # Add to database
-        self.db.add_message(sender, content)
+        self.db.add_message(sender, content, session_id=self.current_session_id)
         
         # Trigger AI analysis (host only)
         if self.is_host and self.ai_service:
@@ -427,27 +515,50 @@ class PetChatApp:
                 self.port = int(dialog.port_text)
             except ValueError:
                 self.port = Settings.DEFAULT_PORT
+            self.use_relay = getattr(dialog, "use_relay", False)
+            self.relay_host = getattr(dialog, "relay_host", "") or self.host_ip
+            try:
+                self.relay_port = int(getattr(dialog, "relay_port_text", "") or self.port)
+            except ValueError:
+                self.relay_port = self.port
+            self.room_id = getattr(dialog, "room_id", "default") or "default"
             self.window.update_role(self.is_host)
 
-        self.network = NetworkManager(is_host=self.is_host, host_ip=self.host_ip, port=self.port)
+        self.network = NetworkManager(
+            is_host=self.is_host,
+            host_ip=self.host_ip,
+            port=self.port,
+            use_relay=self.use_relay,
+            relay_host=self.relay_host,
+            relay_port=self.relay_port,
+            room_id=self.room_id,
+        )
         self._setup_connections()
 
         if self.is_host:
             self._init_ai_service()
 
         if self.is_host:
-            self.network.start_host()
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(("8.8.8.8", 80))
-                local_ip = s.getsockname()[0]
-                s.close()
-                self.window.update_status(f"Host模式 - 本地IP: {local_ip}, 端口: {self.port}")
-            except:
-                self.window.update_status(f"Host模式 - 端口: {self.port}")
+            if self.use_relay:
+                self.window.update_status(f"Host模式 - 使用中转服务器 {self.relay_host}:{self.relay_port} 房间 {self.room_id}")
+                self.network.start_host()
+            else:
+                self.network.start_host()
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+                    s.close()
+                    self.window.update_status(f"Host模式 - 本地IP: {local_ip}, 端口: {self.port}")
+                except:
+                    self.window.update_status(f"Host模式 - 端口: {self.port}")
         else:
-            self.window.update_status("正在连接 Host...")
-            self.network.connect_as_guest()
+            if self.use_relay:
+                self.window.update_status(f"Guest模式 - 使用中转服务器 {self.relay_host}:{self.relay_port} 房间 {self.room_id}")
+                self.network.connect_as_guest()
+            else:
+                self.window.update_status("正在连接 Host...")
+                self.network.connect_as_guest()
         
         # Show window
         print("[DEBUG] Showing window...")

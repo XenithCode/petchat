@@ -10,7 +10,7 @@ class SuggestionPanel(QWidget):
     
     suggestion_adopted = pyqtSignal(str)  # Emitted when user adopts a suggestion
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None):    
         super().__init__(parent)
         self.current_suggestion: Optional[Dict] = None
         self._init_ui()

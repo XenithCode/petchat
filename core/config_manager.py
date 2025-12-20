@@ -38,20 +38,16 @@ class ConfigManager:
             print(f"Error saving config: {e}")
     
     def get_api_key(self) -> Optional[str]:
-        """Get API key"""
         return self.config.get('api_key')
     
     def get_api_base(self) -> Optional[str]:
-        """Get API base URL"""
         return self.config.get('api_base')
     
     def set_api_key(self, api_key: str):
-        """Set API key"""
         self.config['api_key'] = api_key
         self._save_config()
     
     def set_api_base(self, api_base: str):
-        """Set API base URL"""
         if api_base:
             self.config['api_base'] = api_base
         else:
@@ -59,13 +55,25 @@ class ConfigManager:
         self._save_config()
     
     def set_api_config(self, api_key: str, api_base: str = ""):
-        """Set both API key and base"""
         self.set_api_key(api_key)
         self.set_api_base(api_base)
     
     def has_api_config(self) -> bool:
-        """Check if API config exists"""
         return bool(self.config.get('api_key'))
+
+    def get_user_name(self) -> Optional[str]:
+        return self.config.get('user_name')
+
+    def get_user_avatar(self) -> Optional[str]:
+        return self.config.get('user_avatar')
+
+    def set_user_profile(self, name: str, avatar: str = ""):
+        self.config['user_name'] = name
+        if avatar:
+            self.config['user_avatar'] = avatar
+        else:
+            self.config.pop('user_avatar', None)
+        self._save_config()
 
     def reset(self):
         """Reset configuration to defaults"""

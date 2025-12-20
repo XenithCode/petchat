@@ -2,7 +2,8 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLineEdit, QPushButton, QSplitter,
                              QLabel, QScrollArea, QMessageBox, QMenuBar, QMenu,
-                             QTabWidget, QListWidget, QListWidgetItem, QFrame)
+                             QTabWidget, QListWidget, QListWidgetItem, QFrame,
+                             QInputDialog)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor, QAction
 from datetime import datetime
@@ -23,13 +24,19 @@ class MainWindow(QMainWindow):
     ai_requested = pyqtSignal()
     api_config_changed = pyqtSignal(str, str, bool)
     api_config_reset = pyqtSignal()
+    conversation_selected = pyqtSignal(str)
+    load_more_requested = pyqtSignal()
+    typing_changed = pyqtSignal(bool)
     
-    def __init__(self, is_host: bool = False, parent=None):
+    def __init__(self, is_host: bool = False, user_name: Optional[str] = None, parent=None):
         super().__init__(parent)
         self.is_host = is_host
-        self.user_name = "Host" if is_host else "Guest"
+        self.user_name = user_name if user_name else ("Host" if is_host else "Guest")
         self.message_history = []
+        self._current_is_group = False
+        self._typing = False
         self._init_ui()
+        self._init_sidebar_data()
     
     def _init_ui(self):
         """Initialize UI components"""
@@ -48,6 +55,54 @@ class MainWindow(QMainWindow):
         
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
+        sidebar_widget = QWidget()
+        sidebar_layout = QVBoxLayout()
+        sidebar_layout.setSpacing(8)
+        sidebar_layout.setContentsMargins(0, 0, 8, 0)
+        
+        room_header_layout = QHBoxLayout()
+        room_label = QLabel("会话列表")
+        room_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px; font-weight: 600;"
+        )
+        room_header_layout.addWidget(room_label)
+        room_header_layout.addStretch()
+        self.new_group_button = QPushButton("新建群聊")
+        self.new_group_button.setFixedHeight(24)
+        self.new_group_button.clicked.connect(self._on_new_group_clicked)
+        room_header_layout.addWidget(self.new_group_button)
+        sidebar_layout.addLayout(room_header_layout)
+        
+        self.room_list = QListWidget()
+        self.room_list.setStyleSheet(
+            f"QListWidget {{ background-color: {Theme.BG_MUTED}; border-radius: {Theme.RADIUS_MD}px;"
+            f" border: 1px solid {Theme.BG_BORDER}; color: {Theme.TEXT_PRIMARY}; }}"
+            f"QListWidget::item {{ padding: 6px 10px; }}"
+            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; }}"
+        )
+        self.room_list.itemSelectionChanged.connect(self._on_room_selected)
+        sidebar_layout.addWidget(self.room_list)
+        
+        user_label = QLabel("在线用户")
+        user_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px; font-weight: 600;"
+        )
+        sidebar_layout.addWidget(user_label)
+        
+        self.user_list = QListWidget()
+        self.user_list.setStyleSheet(
+            f"QListWidget {{ background-color: {Theme.BG_MUTED}; border-radius: {Theme.RADIUS_MD}px;"
+            f" border: 1px solid {Theme.BG_BORDER}; color: {Theme.TEXT_PRIMARY}; }}"
+            f"QListWidget::item {{ padding: 6px 10px; }}"
+            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; }}"
+        )
+        self.user_list.itemSelectionChanged.connect(self._on_user_selected)
+        sidebar_layout.addWidget(self.user_list)
+        
+        sidebar_layout.addStretch()
+        sidebar_widget.setLayout(sidebar_layout)
+        sidebar_widget.setMinimumWidth(220)
+        
         left_widget = QWidget()
         left_layout = QVBoxLayout()
         left_layout.setSpacing(10)
@@ -59,6 +114,10 @@ class MainWindow(QMainWindow):
         chat_container = QWidget()
         chat_layout = QVBoxLayout()
         chat_layout.setSpacing(8)
+
+        self.load_more_button = QPushButton("加载更多消息")
+        self.load_more_button.clicked.connect(self._on_load_more_clicked)
+        chat_layout.addWidget(self.load_more_button)
         
         self.message_display = QListWidget()
         self.message_display.setFrameShape(QFrame.Shape.NoFrame)
@@ -67,18 +126,22 @@ class MainWindow(QMainWindow):
         )
         chat_layout.addWidget(self.message_display)
         
+        input_container = QWidget()
         input_layout = QHBoxLayout()
+        input_layout.setContentsMargins(0, 0, 0, 0)
         input_layout.setSpacing(8)
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText("输入消息... (输入 /ai 请求AI建议)")
         self.message_input.returnPressed.connect(self._send_message)
+        self.message_input.textEdited.connect(self._on_text_edited)
         input_layout.addWidget(self.message_input)
         
         self.send_button = QPushButton("发送")
         self.send_button.clicked.connect(self._send_message)
         input_layout.addWidget(self.send_button)
+        input_container.setLayout(input_layout)
         
-        chat_layout.addLayout(input_layout)
+        chat_layout.addWidget(input_container)
         chat_container.setLayout(chat_layout)
         
         left_layout.addWidget(chat_container)
@@ -95,10 +158,12 @@ class MainWindow(QMainWindow):
         self.memory_viewer.clear_requested.connect(self._on_clear_memories)
         right_tabs.addTab(self.memory_viewer, "🧠 记忆")
         
+        splitter.addWidget(sidebar_widget)
         splitter.addWidget(left_widget)
         splitter.addWidget(right_tabs)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(2, 1)
         
         main_layout.addWidget(splitter)
         central_widget.setLayout(main_layout)
@@ -138,12 +203,32 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
+    def _init_sidebar_data(self):
+        default_room_item = QListWidgetItem(self.user_name)
+        default_room_item.setData(Qt.ItemDataRole.UserRole, "default")
+        default_room_item.setData(Qt.ItemDataRole.UserRole + 1, False)
+        self.room_list.addItem(default_room_item)
+        self.room_list.setCurrentItem(default_room_item)
+        
+        current_user_item = QListWidgetItem(self.user_name)
+        current_user_item.setData(Qt.ItemDataRole.UserRole, self.user_name)
+        self.user_list.addItem(current_user_item)
+        self.user_list.setCurrentItem(current_user_item)
+
     def update_role(self, is_host: bool):
         self.is_host = is_host
         self.user_name = "Host" if is_host else "Guest"
         self.setWindowTitle(f"pet-chat - {self.user_name}")
         if hasattr(self, "api_action"):
             self.api_action.setEnabled(self.is_host)
+    
+    def clear_messages(self):
+        self.message_history = []
+        self.message_display.clear()
+    
+    def show_typing_status(self, is_typing: bool):
+        if is_typing:
+            self.statusBar().showMessage("对方正在输入...", 1000)
     
     def add_message(self, sender: str, content: str, timestamp: Optional[str] = None):
         """
@@ -266,6 +351,57 @@ class MainWindow(QMainWindow):
         self.message_input.setCursorPosition(len(new_text))
         self.message_input.setFocus()
         self.statusBar().showMessage("已将 AI 建议放入输入框，请确认后发送。", 5000)
+    
+    def _on_room_selected(self):
+        items = self.room_list.selectedItems()
+        if not items:
+            return
+        item = items[0]
+        room_name = item.text()
+        session_id = item.data(Qt.ItemDataRole.UserRole) or "default"
+        is_group = bool(item.data(Qt.ItemDataRole.UserRole + 1))
+        self._current_is_group = is_group
+        self.statusBar().showMessage(f"已切换到会话：{room_name}", 3000)
+        self.conversation_selected.emit(session_id)
+    
+    def _on_user_selected(self):
+        items = self.user_list.selectedItems()
+        if not items:
+            return
+        item = items[0]
+        user_name = item.text()
+        self.statusBar().showMessage(f"查看用户：{user_name}", 3000)
+        if self._current_is_group and user_name != self.user_name:
+            text = self.message_input.text()
+            mention = f"@{user_name}"
+            if mention not in text:
+                if text and not text.endswith(" "):
+                    text += " "
+                text += mention + " "
+                self.message_input.setText(text)
+                self.message_input.setCursorPosition(len(text))
+
+    def _on_load_more_clicked(self):
+        self.load_more_requested.emit()
+
+    def _on_new_group_clicked(self):
+        name, ok = QInputDialog.getText(self, "新建群聊", "请输入群聊名称：")
+        if not ok:
+            return
+        name = name.strip() or "新的群聊"
+        session_id = f"group-{int(datetime.now().timestamp())}"
+        item = QListWidgetItem(name)
+        item.setData(Qt.ItemDataRole.UserRole, session_id)
+        item.setData(Qt.ItemDataRole.UserRole + 1, True)
+        self.room_list.addItem(item)
+        self.room_list.setCurrentItem(item)
+
+    def _on_text_edited(self, _text: str):
+        text = self.message_input.text()
+        now_typing = bool(text.strip())
+        if now_typing != self._typing:
+            self._typing = now_typing
+            self.typing_changed.emit(now_typing)
     
     def update_emotion(self, emotion_scores: dict):
         """Update pet emotion display"""
