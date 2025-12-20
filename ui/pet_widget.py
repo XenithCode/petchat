@@ -21,11 +21,14 @@ class PetWidget(QWidget):
         self.current_emotion = "neutral"
         self.current_confidence = 1.0
         self.blink_state = False
+        self.tick_count = 0
+        self.blink_interval = 60  # ticks (approx 3 seconds at 50ms)
+        self.blink_duration = 4   # ticks (approx 200ms)
         
         # Animation setup
         self.animation_timer = QTimer(self)
         self.animation_timer.timeout.connect(self._on_animation_tick)
-        self.start_animation()
+        self.start_animation(50)  # 50ms interval = 20 FPS
         
         self._init_ui()
     
@@ -53,7 +56,7 @@ class PetWidget(QWidget):
         """)
         self.setMinimumHeight(180)
     
-    def start_animation(self, interval: int = 800):
+    def start_animation(self, interval: int = 50):
         """Start the animation loop"""
         self.animation_timer.start(interval)
         
@@ -91,8 +94,18 @@ class PetWidget(QWidget):
         self.update()
 
     def _update_blink_state(self):
-        """Toggle blink state"""
-        self.blink_state = not self.blink_state
+        """Update blink state based on tick count"""
+        self.tick_count += 1
+        
+        # Reset cycle
+        cycle_length = self.blink_interval + self.blink_duration
+        current_tick = self.tick_count % cycle_length
+        
+        # Blink when in the duration window
+        is_blinking = current_tick >= self.blink_interval
+        
+        if self.blink_state != is_blinking:
+            self.blink_state = is_blinking
 
     def closeEvent(self, event):
         """Clean up resources"""

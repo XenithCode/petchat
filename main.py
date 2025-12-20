@@ -10,6 +10,7 @@ from core.network import NetworkManager
 from core.database import Database
 from core.ai_service import AIService
 from core.config_manager import ConfigManager
+from core.window_manager import window_manager
 from ui.main_window import MainWindow
 from ui.api_config_dialog import APIConfigDialog
 from config.settings import Settings
@@ -126,6 +127,8 @@ class PetChatApp:
         self.app.setStyleSheet(Theme.get_stylesheet())
         
         self.window = MainWindow(is_host=is_host)
+        self.window_id = window_manager.register_window(self.window)
+        self.app.aboutToQuit.connect(lambda: window_manager.unregister_window(self.window_id))
         self.message_count = 0
     
     def _setup_connections(self):
