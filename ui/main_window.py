@@ -13,6 +13,7 @@ from ui.pet_widget import PetWidget
 from ui.suggestion_panel import SuggestionPanel
 from ui.memory_viewer import MemoryViewer
 from ui.api_config_dialog import APIConfigDialog
+from ui.theme import Theme
 
 
 class MainWindow(QMainWindow):
@@ -35,119 +36,46 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"pet-chat - {self.user_name}")
         self.setGeometry(100, 100, 1400, 900)
         
-        # Menu bar
         self._create_menu_bar()
         
         # Central widget
         central_widget = QWidget()
         central_widget.setObjectName("central")
         self.setCentralWidget(central_widget)
-        
-        self.setStyleSheet("""
-            QWidget#central {
-                background-color: #e5e7eb;
-            }
-            QMenuBar {
-                background-color: #ffffff;
-                border-bottom: 1px solid #e5e7eb;
-            }
-            QMenuBar::item {
-                padding: 4px 12px;
-            }
-            QMenuBar::item:selected {
-                background-color: #e5e7eb;
-            }
-            QStatusBar {
-                background-color: #ffffff;
-                border-top: 1px solid #e5e7eb;
-            }
-            QTabWidget::pane {
-                border: 1px solid #e5e7eb;
-                border-radius: 10px;
-                background-color: #ffffff;
-            }
-            QTabBar::tab {
-                background-color: #e5e7eb;
-                padding: 6px 12px;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: #ffffff;
-            }
-        """)
-        
-        # Main layout with splitter
+
         main_layout = QHBoxLayout()
         main_layout.setContentsMargins(5, 5, 5, 5)
         
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Left side: Chat area + Pet
         left_widget = QWidget()
         left_layout = QVBoxLayout()
         left_layout.setSpacing(10)
         
-        # Pet widget
         self.pet_widget = PetWidget()
         self.pet_widget.setMaximumHeight(180)
         left_layout.addWidget(self.pet_widget)
         
-        # Chat area
         chat_container = QWidget()
         chat_layout = QVBoxLayout()
         chat_layout.setSpacing(8)
         
-        # Message display (WeChat-style bubble list)
         self.message_display = QListWidget()
         self.message_display.setFrameShape(QFrame.Shape.NoFrame)
-        self.message_display.setStyleSheet("""
-            QListWidget {
-                background-color: #f9fafb;
-                border: none;
-            }
-        """)
+        self.message_display.setStyleSheet(
+            f"QListWidget {{ background-color: {Theme.BG_MAIN}; border: none; }}"
+        )
         chat_layout.addWidget(self.message_display)
         
-        # Input area
         input_layout = QHBoxLayout()
         input_layout.setSpacing(8)
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText("输入消息... (输入 /ai 请求AI建议)")
         self.message_input.returnPressed.connect(self._send_message)
-        self.message_input.setStyleSheet("""
-            QLineEdit {
-                padding: 10px;
-                border: 2px solid #ddd;
-                border-radius: 8px;
-                font-size: 14px;
-                background-color: #f9fafb;
-                color: #111827;
-            }
-            QLineEdit:focus {
-                border: 2px solid #3498db;
-            }
-        """)
         input_layout.addWidget(self.message_input)
         
         self.send_button = QPushButton("发送")
         self.send_button.clicked.connect(self._send_message)
-        self.send_button.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 10px 25px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:pressed {
-                background-color: #21618c;
-            }
-        """)
         input_layout.addWidget(self.send_button)
         
         chat_layout.addLayout(input_layout)
@@ -156,16 +84,13 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(chat_container)
         left_widget.setLayout(left_layout)
         
-        # Right side: Tab widget for suggestions and memories
         right_tabs = QTabWidget()
         right_tabs.setMaximumWidth(350)
         
-        # Suggestion panel
         self.suggestion_panel = SuggestionPanel()
         self.suggestion_panel.suggestion_adopted.connect(self._on_suggestion_adopted)
         right_tabs.addTab(self.suggestion_panel, "💡 建议")
         
-        # Memory viewer
         self.memory_viewer = MemoryViewer()
         self.memory_viewer.clear_requested.connect(self._on_clear_memories)
         right_tabs.addTab(self.memory_viewer, "🧠 记忆")
@@ -178,35 +103,28 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter)
         central_widget.setLayout(main_layout)
         
-        # Status bar
         self.statusBar().showMessage(f"已连接 - {self.user_name}")
-        self.statusBar().setStyleSheet("""
-            QStatusBar {
-                background-color: #f8f9fa;
-                border-top: 1px solid #dee2e6;
-                color: #555555;
-            }
-        """)
+        self.statusBar().setStyleSheet(
+            f"QStatusBar {{ background-color: {Theme.BG_MUTED}; border-top: 1px solid {Theme.BG_BORDER}; color: {Theme.TEXT_SECONDARY}; }}"
+        )
     
     def _create_menu_bar(self):
         """Create menu bar"""
         menubar = self.menuBar()
         
-        # File menu
         file_menu = menubar.addMenu("文件")
         exit_action = QAction("退出", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
-        settings_menu = menubar.addMenu("设置")
-        if self.is_host:
-            api_action = QAction("⚙ API 配置", self)
-            api_action.setShortcut("Ctrl+K")
-            api_action.triggered.connect(self._show_api_config)
-            settings_menu.addAction(api_action)
+        self.settings_menu = menubar.addMenu("设置")
+        self.api_action = QAction("⚙ API 配置", self)
+        self.api_action.setShortcut("Ctrl+K")
+        self.api_action.triggered.connect(self._show_api_config)
+        self.settings_menu.addAction(self.api_action)
+        self.api_action.setEnabled(self.is_host)
         
-        # View menu
         view_menu = menubar.addMenu("视图")
         
         memories_action = QAction("查看记忆", self)
@@ -214,12 +132,18 @@ class MainWindow(QMainWindow):
         memories_action.triggered.connect(self._show_memories_tab)
         view_menu.addAction(memories_action)
         
-        # Help menu
         help_menu = menubar.addMenu("帮助")
         
         about_action = QAction("关于", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+    def update_role(self, is_host: bool):
+        self.is_host = is_host
+        self.user_name = "Host" if is_host else "Guest"
+        self.setWindowTitle(f"pet-chat - {self.user_name}")
+        if hasattr(self, "api_action"):
+            self.api_action.setEnabled(self.is_host)
     
     def add_message(self, sender: str, content: str, timestamp: Optional[str] = None):
         """
@@ -231,9 +155,18 @@ class MainWindow(QMainWindow):
             timestamp: Optional timestamp (defaults to now)
         """
         if timestamp is None:
-            timestamp = datetime.now().strftime("%H:%M:%S")
-        
+            timestamp = datetime.now().strftime("%H:%M")
+
+        previous_timestamp = self.message_history[-1]["timestamp"] if self.message_history else None
         self.message_history.append({"sender": sender, "content": content, "timestamp": timestamp})
+
+        show_separator = False
+        if previous_timestamp is None:
+            show_separator = True
+        else:
+            show_separator = previous_timestamp[:5] != timestamp[:5]
+        if show_separator:
+            self._add_time_separator(timestamp)
         
         bubble_widget = QWidget()
         bubble_layout = QHBoxLayout()
@@ -249,28 +182,20 @@ class MainWindow(QMainWindow):
         text_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         time_label = QLabel(timestamp)
-        time_label.setStyleSheet("color: #9ca3af; font-size: 10px;")
+        time_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px;"
+        )
 
         if sender == self.user_name:
-            text_label.setStyleSheet("""
-                QLabel {
-                    background-color: #95ec69;
-                    color: #111827;
-                    border-radius: 10px;
-                    padding: 8px 12px;
-                    font-size: 14px;
-                }
-            """)
+            text_label.setStyleSheet(
+                f"QLabel {{ background-color: {Theme.PRIMARY}; color: {Theme.PRIMARY_TEXT};"
+                f" border-radius: 18px; padding: 10px 14px; font-size: 14px; }}"
+            )
         else:
-            text_label.setStyleSheet("""
-                QLabel {
-                    background-color: #ffffff;
-                    color: #111827;
-                    border-radius: 10px;
-                    padding: 8px 12px;
-                    font-size: 14px;
-                }
-            """)
+            text_label.setStyleSheet(
+                f"QLabel {{ background-color: {Theme.BG_MUTED}; color: {Theme.TEXT_PRIMARY};"
+                f" border-radius: 18px; padding: 10px 14px; font-size: 14px; }}"
+            )
 
         content_layout.addWidget(text_label)
         content_layout.addWidget(time_label, 0, Qt.AlignmentFlag.AlignRight)
@@ -289,6 +214,25 @@ class MainWindow(QMainWindow):
         self.message_display.addItem(item)
         self.message_display.setItemWidget(item, bubble_widget)
         self.message_display.scrollToBottom()
+
+    def _add_time_separator(self, timestamp: str):
+        separator_widget = QWidget()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 8, 0, 8)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        label = QLabel(timestamp)
+        label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; padding: 4px 12px;"
+            f" border-radius: {Theme.RADIUS_SM}px; background-color: {Theme.BG_MUTED};"
+        )
+        layout.addWidget(label)
+        separator_widget.setLayout(layout)
+
+        item = QListWidgetItem()
+        item.setSizeHint(separator_widget.sizeHint())
+        self.message_display.addItem(item)
+        self.message_display.setItemWidget(item, separator_widget)
     
     def _send_message(self):
         """Handle send message"""
@@ -313,9 +257,15 @@ class MainWindow(QMainWindow):
     
     def _on_suggestion_adopted(self, content: str):
         """Handle suggestion adoption"""
-        # Insert suggestion content into input field
-        self.message_input.setText(content)
+        existing = self.message_input.text()
+        if existing.strip():
+            new_text = existing.rstrip() + "\n" + content
+        else:
+            new_text = content
+        self.message_input.setText(new_text)
+        self.message_input.setCursorPosition(len(new_text))
         self.message_input.setFocus()
+        self.statusBar().showMessage("已将 AI 建议放入输入框，请确认后发送。", 5000)
     
     def update_emotion(self, emotion_scores: dict):
         """Update pet emotion display"""

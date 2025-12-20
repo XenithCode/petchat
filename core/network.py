@@ -13,10 +13,13 @@ class NetworkManager(QObject):
     Thread-safe implementation using PyQt signals.
     """
     
-    # Signals for UI updates (must be emitted from QObject)
-    message_received = pyqtSignal(str, str)  # sender, content
-    connection_status_changed = pyqtSignal(bool, str)  # connected, message
+    message_received = pyqtSignal(str, str)
+    connection_status_changed = pyqtSignal(bool, str)
     error_occurred = pyqtSignal(str)
+    ai_suggestion_received = pyqtSignal(dict)
+    ai_emotion_received = pyqtSignal(dict)
+    ai_memories_received = pyqtSignal(list)
+    ai_request_received = pyqtSignal()
     
     def __init__(self, is_host: bool = False, host_ip: str = "127.0.0.1", port: int = 8888):
         super().__init__()
@@ -122,6 +125,34 @@ class NetworkManager(QObject):
             "timestamp": datetime.now().isoformat()
         })
 
+    def send_ai_suggestion(self, suggestion: Dict) -> bool:
+        """Broadcast AI suggestion to the peer"""
+        return self._send_packet({
+            "type": "ai_suggestion",
+            "payload": suggestion
+        })
+
+    def send_ai_emotion(self, scores: Dict) -> bool:
+        """Broadcast AI emotion scores to the peer"""
+        return self._send_packet({
+            "type": "ai_emotion",
+            "scores": scores
+        })
+
+    def send_ai_memories(self, memories: list) -> bool:
+        """Broadcast AI extracted memories to the peer"""
+        return self._send_packet({
+            "type": "ai_memories",
+            "memories": memories
+        })
+
+    def send_ai_request(self) -> bool:
+        """Send an explicit AI suggestion request to host"""
+        return self._send_packet({
+            "type": "ai_request",
+            "timestamp": datetime.now().isoformat()
+        })
+
     def _send_packet(self, data_dict: Dict) -> bool:
         """Low-level packet sending with thread safety"""
         target_socket = self.client_socket if self.is_host else self.socket
@@ -192,6 +223,20 @@ class NetworkManager(QObject):
             sender = message.get("sender", "Unknown")
             content = message.get("content", "")
             self.message_received.emit(sender, content)
+        elif msg_type == "ai_suggestion":
+            payload = message.get("payload", {})
+            if isinstance(payload, dict):
+                self.ai_suggestion_received.emit(payload)
+        elif msg_type == "ai_emotion":
+            scores = message.get("scores", {})
+            if isinstance(scores, dict):
+                self.ai_emotion_received.emit(scores)
+        elif msg_type == "ai_memories":
+            memories = message.get("memories", [])
+            if isinstance(memories, list):
+                self.ai_memories_received.emit(memories)
+        elif msg_type == "ai_request":
+            self.ai_request_received.emit()
 
     def _heartbeat_loop(self, sock: socket.socket):
         """Send heartbeats and check for timeouts"""

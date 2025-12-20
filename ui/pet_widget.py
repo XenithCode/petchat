@@ -2,6 +2,7 @@
 from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout
 from PyQt6.QtCore import Qt, QTimer, QPointF
 from PyQt6.QtGui import QPainter, QBrush, QPen, QRadialGradient, QColor
+import math
 from typing import Dict
 from ui.theme import Theme
 
@@ -122,6 +123,13 @@ class PetWidget(QWidget):
 
         center_x = width // 2
         center_y = height // 2 - 10
+
+        float_offset = 0
+        if self.current_emotion == "happy":
+            float_offset = 4 * math.sin(self.tick_count / 6.0)
+        elif self.current_emotion in ("tense", "negative"):
+            float_offset = 2 * math.sin(self.tick_count / 8.0)
+        center_y += int(float_offset)
 
         # Draw shadow
         self._draw_shadow(painter, center_x, center_y)

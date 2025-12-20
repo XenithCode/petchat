@@ -3,66 +3,96 @@ UI Theme definitions complying with WCAG 2.1 AA and Modern UI standards.
 """
 from PyQt6.QtGui import QColor
 
+
 class Theme:
     """Application Theme Colors and Metrics"""
-    
-    # --- Colors ---
-    # Primary Palette
-    PRIMARY = "#2563eb"        # Blue 600 - Good contrast on white
-    PRIMARY_HOVER = "#1d4ed8"  # Blue 700
-    PRIMARY_TEXT = "#ffffff"   # White text on primary
-    
-    # Secondary/Accent
-    SECONDARY = "#4b5563"      # Gray 600
-    ACCENT = "#8b5cf6"         # Violet 500
-    
-    # Backgrounds
-    BG_MAIN = "#f3f4f6"        # Gray 100 - Main app background
-    BG_WHITE = "#ffffff"       # White - Cards/Panels
-    BG_HOVER = "#f9fafb"       # Gray 50
-    BG_SELECTED = "#e5e7eb"    # Gray 200
-    
-    # Text Colors (WCAG compliant)
-    TEXT_PRIMARY = "#111827"   # Gray 900 - High contrast text
-    TEXT_SECONDARY = "#4b5563" # Gray 600 - Secondary text (check contrast!)
-    TEXT_DISABLED = "#9ca3af"  # Gray 400
-    
-    # Status Colors
-    SUCCESS = "#059669"        # Emerald 600
-    WARNING = "#d97706"        # Amber 600
-    ERROR = "#dc2626"          # Red 600
-    
-    # --- Metrics (8px Grid) ---
+
+    PRIMARY = "#0a84ff"
+    PRIMARY_HOVER = "#1b9aee"
+    PRIMARY_TEXT = "#f9fafb"
+
+    SECONDARY = "#4b5563"
+    ACCENT = "#22c1c3"
+
+    BG_MAIN = "#020617"
+    BG_ELEVATED = "#020617"
+    BG_SURFACE = "#020617"
+    BG_MUTED = "#111827"
+    BG_BORDER = "#1f2937"
+    BG_HOVER = "#020617"
+    BG_SELECTED = "#111827"
+
+    TEXT_PRIMARY = "#e5e7eb"
+    TEXT_SECONDARY = "#9ca3af"
+    TEXT_DISABLED = "#6b7280"
+
+    SUCCESS = "#22c55e"
+    WARNING = "#fbbf24"
+    ERROR = "#f97373"
+
     SPACING_XS = 4
     SPACING_SM = 8
     SPACING_MD = 16
     SPACING_LG = 24
     SPACING_XL = 32
-    
-    RADIUS_SM = 4
-    RADIUS_MD = 8
-    RADIUS_LG = 12
-    
-    # --- Typography ---
+
+    RADIUS_SM = 6
+    RADIUS_MD = 10
+    RADIUS_LG = 16
+
     FONT_SIZE_SM = 12
     FONT_SIZE_MD = 14
     FONT_SIZE_LG = 16
     FONT_SIZE_XL = 20
-    
+
     @staticmethod
     def get_stylesheet():
-        """Global application stylesheet"""
         return f"""
             QWidget {{
                 color: {Theme.TEXT_PRIMARY};
-                font-family: 'Segoe UI', system-ui, sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+                background-color: {Theme.BG_MAIN};
             }}
-            
+
             QMainWindow {{
                 background-color: {Theme.BG_MAIN};
             }}
-            
-            /* Buttons */
+
+            QDialog {{
+                background-color: {Theme.BG_MAIN};
+            }}
+
+            QMenuBar {{
+                background-color: {Theme.BG_MAIN};
+                color: {Theme.TEXT_PRIMARY};
+                border: none;
+            }}
+            QMenuBar::item {{
+                padding: 6px 14px;
+                background: transparent;
+            }}
+            QMenuBar::item:selected {{
+                background-color: {Theme.BG_MUTED};
+            }}
+
+            QMenu {{
+                background-color: {Theme.BG_MUTED};
+                color: {Theme.TEXT_PRIMARY};
+                border: 1px solid {Theme.BG_BORDER};
+                padding: 6px 0;
+            }}
+            QMenu::item {{
+                padding: 6px 18px;
+            }}
+            QMenu::item:selected {{
+                background-color: {Theme.PRIMARY};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                margin: 4px 12px;
+                background: {Theme.BG_BORDER};
+            }}
+
             QPushButton {{
                 background-color: {Theme.PRIMARY};
                 color: {Theme.PRIMARY_TEXT};
@@ -76,36 +106,59 @@ class Theme:
                 background-color: {Theme.PRIMARY_HOVER};
             }}
             QPushButton:disabled {{
-                background-color: {Theme.TEXT_DISABLED};
+                background-color: {Theme.BG_BORDER};
+                color: {Theme.TEXT_DISABLED};
             }}
-            
-            /* Inputs */
+
             QLineEdit, QTextEdit {{
-                background-color: {Theme.BG_WHITE};
-                border: 1px solid #d1d5db;
+                background-color: {Theme.BG_MUTED};
+                border: 1px solid {Theme.BG_BORDER};
                 border-radius: {Theme.RADIUS_MD}px;
                 padding: {Theme.SPACING_SM}px;
                 font-size: {Theme.FONT_SIZE_MD}px;
                 color: {Theme.TEXT_PRIMARY};
             }}
             QLineEdit:focus, QTextEdit:focus {{
-                border: 2px solid {Theme.PRIMARY};
+                border: 1px solid {Theme.PRIMARY};
             }}
-            
-            /* Scrollbars */
+            QLineEdit::placeholder, QTextEdit::placeholder {{
+                color: {Theme.TEXT_SECONDARY};
+            }}
+
+            QTabWidget::pane {{
+                border: 1px solid {Theme.BG_BORDER};
+                border-radius: {Theme.RADIUS_MD}px;
+                background: {Theme.BG_MUTED};
+            }}
+            QTabBar::tab {{
+                background: {Theme.BG_MAIN};
+                color: {Theme.TEXT_SECONDARY};
+                padding: 6px 14px;
+                margin-right: 2px;
+            }}
+            QTabBar::tab:selected {{
+                background: {Theme.BG_MUTED};
+                color: {Theme.TEXT_PRIMARY};
+            }}
+
+            QListWidget {{
+                background-color: {Theme.BG_MAIN};
+                border: none;
+            }}
+
             QScrollBar:vertical {{
                 border: none;
                 background: {Theme.BG_MAIN};
                 width: 10px;
-                margin: 0px 0px 0px 0px;
+                margin: 0;
             }}
             QScrollBar::handle:vertical {{
-                background: #d1d5db;
+                background: {Theme.BG_BORDER};
                 min-height: 20px;
                 border-radius: 5px;
             }}
             QScrollBar::handle:vertical:hover {{
-                background: #9ca3af;
+                background: {Theme.TEXT_DISABLED};
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 background: none;

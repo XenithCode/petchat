@@ -34,7 +34,9 @@ class RoleSelectionDialog(QDialog):
 
         title = QLabel("选择启动模式")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet(f"font-size: {Theme.FONT_SIZE_LG}px; font-weight: bold; color: {Theme.TEXT_PRIMARY};")
+        title.setStyleSheet(
+            f"font-size: {Theme.FONT_SIZE_XL}px; font-weight: 600; color: {Theme.TEXT_PRIMARY};"
+        )
         layout.addWidget(title)
         
         hint = QLabel("请选择您的角色：房主负责创建房间，访客可以加入现有房间。")
@@ -73,9 +75,9 @@ class RoleSelectionDialog(QDialog):
         button_layout.addStretch()
         cancel_btn = QPushButton("取消")
         ok_btn = QPushButton("确定")
-        
-        # Style buttons explicitly
-        cancel_btn.setStyleSheet(f"background-color: {Theme.SECONDARY}; color: white;")
+        cancel_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {Theme.SECONDARY}; color: {Theme.PRIMARY_TEXT}; }}"
+        )
         
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(ok_btn)
@@ -154,10 +156,13 @@ class PetChatApp:
     
     def _setup_connections(self):
         """Setup signal/slot connections"""
-        # Network signals
         self.network.message_received.connect(self._on_message_received)
         self.network.connection_status_changed.connect(self._on_connection_status)
         self.network.error_occurred.connect(self._on_network_error)
+        self.network.ai_suggestion_received.connect(self._on_remote_suggestion)
+        self.network.ai_emotion_received.connect(self._on_remote_emotion)
+        self.network.ai_memories_received.connect(self._on_remote_memories)
+        self.network.ai_request_received.connect(self._on_remote_ai_request)
         
         self.window.message_sent.connect(self._on_message_sent)
         self.window.ai_requested.connect(self._on_ai_requested)
@@ -181,6 +186,23 @@ class PetChatApp:
         self.window.update_status(f"Error: {error_msg}")
         # Optional: log error to console or file
         print(f"Network Error: {error_msg}")
+
+    def _on_remote_suggestion(self, suggestion: dict):
+        """Handle suggestion sent from peer"""
+        self.window.show_suggestion(suggestion)
+
+    def _on_remote_emotion(self, emotion_scores: dict):
+        """Handle emotion scores sent from peer"""
+        self.window.update_emotion(emotion_scores)
+
+    def _on_remote_memories(self, memories: list):
+        """Handle memories sent from peer"""
+        self.window.update_memories(memories)
+
+    def _on_remote_ai_request(self):
+        """Handle explicit AI request forwarded from guest to host"""
+        if self.is_host and self.ai_service:
+            self._on_ai_requested()
 
     def _init_ai_service(self):
         """Initialize AI service with config"""
@@ -286,8 +308,8 @@ class PetChatApp:
         try:
             emotion_scores = self.ai_service.analyze_emotion(recent_messages)
             self.window.update_emotion(emotion_scores)
-            
-            # Store emotion in database
+            if self.network:
+                self.network.send_ai_emotion(emotion_scores)
             emotion_type = max(emotion_scores.items(), key=lambda x: x[1])[0]
             confidence = emotion_scores[emotion_type]
             self.db.add_emotion(emotion_type, confidence)
@@ -311,8 +333,9 @@ class PetChatApp:
                 # Simple duplicate check
                 if memory['content'] not in [m['content'] for m in existing]:
                     self.db.add_memory(memory['content'], memory.get('category'))
-            # Update UI
             self._update_memories_display()
+            if self.network:
+                self.network.send_ai_memories(self.db.get_memories())
         except Exception as e:
             print(f"Error extracting memories: {e}")
     
@@ -329,11 +352,24 @@ class PetChatApp:
             suggestion = self.ai_service.generate_suggestion(recent_messages)
             if suggestion:
                 self.window.show_suggestion(suggestion)
+                if self.network:
+                    self.network.send_ai_suggestion(suggestion)
         except Exception as e:
             print(f"Error generating suggestion: {e}")
     
     def _on_ai_requested(self):
         """Handle explicit AI request (/ai command)"""
+        if not self.is_host:
+            if hasattr(self, "network") and self.network and self.network.running:
+                self.window.update_status("已向 Host 请求 AI 分析...")
+                self.network.send_ai_request()
+            else:
+                self.window.show_suggestion({
+                    "title": "AI服务不可用",
+                    "content": "尚未连接到 Host，无法请求 AI 建议。"
+                })
+            return
+
         if not self.ai_service:
             self.window.show_suggestion({
                 "title": "AI服务不可用",
@@ -391,9 +427,7 @@ class PetChatApp:
                 self.port = int(dialog.port_text)
             except ValueError:
                 self.port = Settings.DEFAULT_PORT
-            self.window.is_host = self.is_host
-            self.window.user_name = "Host" if self.is_host else "Guest"
-            self.window.setWindowTitle(f"pet-chat - {self.window.user_name}")
+            self.window.update_role(self.is_host)
 
         self.network = NetworkManager(is_host=self.is_host, host_ip=self.host_ip, port=self.port)
         self._setup_connections()

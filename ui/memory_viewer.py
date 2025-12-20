@@ -1,9 +1,10 @@
 """Memory viewer widget for displaying and managing extracted memories"""
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QScrollArea, QTextEdit, QMessageBox,
                              QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal
 from typing import List, Dict
+from ui.theme import Theme
 
 
 class MemoryViewer(QWidget):
@@ -21,42 +22,30 @@ class MemoryViewer(QWidget):
         layout = QVBoxLayout()
         layout.setSpacing(10)
         
-        # Header
         header_layout = QHBoxLayout()
         title_label = QLabel("🧠 对话记忆")
-        title_label.setStyleSheet("font-weight: bold; font-size: 15px; color: #111827;")
+        title_label.setStyleSheet(
+            f"font-weight: bold; font-size: 15px; color: {Theme.TEXT_PRIMARY};"
+        )
         header_layout.addWidget(title_label)
         header_layout.addStretch()
         
         clear_btn = QPushButton("清空记忆")
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px 15px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-        """)
+        clear_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {Theme.ERROR}; color: {Theme.PRIMARY_TEXT};"
+            f" border: none; border-radius: {Theme.RADIUS_SM}px; padding: 5px 15px; font-size: 11px; }}"
+        )
         clear_btn.clicked.connect(self._on_clear_requested)
         header_layout.addWidget(clear_btn)
         
         layout.addLayout(header_layout)
         
-        # Scroll area for memories
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                background-color: white;
-            }
-        """)
+        scroll_area.setStyleSheet(
+            f"QScrollArea {{ border: 1px solid {Theme.BG_BORDER}; border-radius: {Theme.RADIUS_MD}px;"
+            f" background-color: {Theme.BG_MUTED}; }}"
+        )
         
         self.memory_container = QWidget()
         self.memory_layout = QVBoxLayout()
@@ -65,20 +54,18 @@ class MemoryViewer(QWidget):
         
         layout.addWidget(scroll_area)
         
-        # Empty state
         self.empty_label = QLabel("暂无记忆\n对话中的关键信息将自动提取并显示在这里")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet("color: #999; padding: 20px;")
+        self.empty_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; padding: 20px;"
+        )
         self.memory_layout.addWidget(self.empty_label)
         self.memory_layout.addStretch()
         
         self.setLayout(layout)
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #fafafa;
-                padding: 10px;
-            }
-        """)
+        self.setStyleSheet(
+            f"QWidget {{ background-color: {Theme.BG_MAIN}; padding: 10px; }}"
+        )
     
     def update_memories(self, memories: List[Dict]):
         """Update displayed memories"""
@@ -94,10 +81,11 @@ class MemoryViewer(QWidget):
                 item.widget().deleteLater()
         
         if not self.memories:
-            # Show empty state
             self.empty_label = QLabel("暂无记忆\n对话中的关键信息将自动提取并显示在这里")
             self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.empty_label.setStyleSheet("color: #999; padding: 20px;")
+            self.empty_label.setStyleSheet(
+                f"color: {Theme.TEXT_SECONDARY}; padding: 20px;"
+            )
             self.memory_layout.addWidget(self.empty_label)
         else:
             # Hide empty label if exists
@@ -115,59 +103,46 @@ class MemoryViewer(QWidget):
         """Create a memory card widget"""
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
-        card.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                padding: 10px;
-                margin: 5px 0px;
-            }
-        """)
+        card.setStyleSheet(
+            f"QFrame {{ background-color: {Theme.BG_MUTED}; border: 1px solid {Theme.BG_BORDER};"
+            f" border-radius: {Theme.RADIUS_MD}px; padding: 10px; margin: 5px 0px; }}"
+        )
         
         layout = QVBoxLayout()
         layout.setSpacing(5)
         
-        # Category badge
         category = memory.get('category', 'unknown')
         category_colors = {
-            'event': '#3498db',
-            'agreement': '#2ecc71',
-            'topic': '#9b59b6',
-            'unknown': '#95a5a6'
+            'event': Theme.PRIMARY,
+            'agreement': Theme.SUCCESS,
+            'topic': Theme.ACCENT,
+            'unknown': Theme.TEXT_DISABLED
         }
         color = category_colors.get(category, '#95a5a6')
         
         category_label = QLabel(f"📌 {category}")
-        category_label.setStyleSheet(f"""
-            color: {color};
-            font-weight: bold;
-            font-size: 11px;
-            padding: 2px 8px;
-            background-color: {color}20;
-            border-radius: 3px;
-        """)
+        category_label.setStyleSheet(
+            f"color: {color}; font-weight: bold; font-size: 11px; padding: 2px 8px;"
+            f" background-color: {color}33; border-radius: 3px;"
+        )
         layout.addWidget(category_label)
         
-        # Content
         content_text = QTextEdit()
         content_text.setPlainText(memory.get('content', ''))
         content_text.setReadOnly(True)
         content_text.setMaximumHeight(80)
-        content_text.setStyleSheet("""
-            QTextEdit {
-                border: none;
-                background-color: transparent;
-                font-size: 14px;
-                color: #111827;
-            }
-        """)
+        content_text.setStyleSheet(
+            f"QTextEdit {{ border: none; background-color: transparent; font-size: 14px;"
+            f" color: {Theme.TEXT_PRIMARY}; }}"
+        )
         layout.addWidget(content_text)
         
         # Timestamp
         if 'created_at' in memory:
             timestamp_label = QLabel(f"记录时间: {memory['created_at'][:19]}")
-            timestamp_label.setStyleSheet("color: #999; font-size: 10px;")
+            timestamp_label.setStyleSheet(
+                f"color: {Theme.TEXT_SECONDARY}; font-size: 10px;"
+            )
             layout.addWidget(timestamp_label)
         
         card.setLayout(layout)

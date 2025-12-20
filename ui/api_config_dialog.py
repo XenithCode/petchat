@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import json
+from ui.theme import Theme
 
 
 class APIConfigDialog(QDialog):
@@ -40,7 +41,9 @@ class APIConfigDialog(QDialog):
             "请填写您的 API Key 和 API Base URL（可选）。"
         )
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #666; padding: 10px;")
+        info_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; padding: 10px;"
+        )
         layout.addWidget(info_label)
         
         # API Key input
@@ -71,7 +74,9 @@ class APIConfigDialog(QDialog):
         api_base_layout.addWidget(self.api_base_input)
         
         info_text = QLabel("留空则使用默认 OpenAI API")
-        info_text.setStyleSheet("color: #999; font-size: 11px;")
+        info_text.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px;"
+        )
         api_base_layout.addWidget(info_text)
         
         api_base_group.setLayout(api_base_layout)
@@ -81,7 +86,9 @@ class APIConfigDialog(QDialog):
         self.remember_checkbox = QCheckBox("记住配置")
         self.remember_checkbox.setChecked(True)
         remember_hint = QLabel("未勾选时，API Key 仅在本次运行中有效。")
-        remember_hint.setStyleSheet("color: #6b7280; font-size: 11px;")
+        remember_hint.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px;"
+        )
         remember_layout.addWidget(self.remember_checkbox)
         remember_layout.addWidget(remember_hint)
         remember_layout.addStretch()
@@ -112,51 +119,26 @@ class APIConfigDialog(QDialog):
         button_layout.addWidget(apply_btn)
         
         save_btn = QPushButton("保存")
-        save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 8px 20px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
+        save_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {Theme.PRIMARY}; color: {Theme.PRIMARY_TEXT};"
+            f" border: none; border-radius: {Theme.RADIUS_SM}px; padding: 8px 20px; font-weight: bold; }}"
+            f" QPushButton:hover {{ background-color: {Theme.PRIMARY_HOVER}; }}"
+        )
         save_btn.clicked.connect(self._on_save_clicked)
         button_layout.addWidget(save_btn)
         
         layout.addLayout(button_layout)
         
         self.setLayout(layout)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #fafafa;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #ddd;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-            QLineEdit {
-                padding: 8px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 2px solid #3498db;
-            }
-        """)
+        self.setStyleSheet(
+            f"QDialog {{ background-color: {Theme.BG_MAIN}; }}"
+            f" QGroupBox {{ font-weight: bold; border: 1px solid {Theme.BG_BORDER};"
+            f" border-radius: {Theme.RADIUS_MD}px; margin-top: 10px; padding-top: 10px; }}"
+            f" QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}"
+            f" QLineEdit {{ padding: 8px; border: 1px solid {Theme.BG_BORDER};"
+            f" border-radius: {Theme.RADIUS_SM}px; font-size: 14px; background-color: {Theme.BG_MUTED}; }}"
+            f" QLineEdit:focus {{ border: 1px solid {Theme.PRIMARY}; }}"
+        )
     
     def _toggle_api_key_visibility(self):
         """Toggle API key visibility"""

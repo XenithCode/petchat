@@ -32,7 +32,7 @@ class AIService:
             client_kwargs["base_url"] = api_base
         
         self.client = OpenAI(**client_kwargs)
-        self.model = "gpt-4o-mini"  # Use cheaper model for MVP
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     
     def analyze_emotion(self, recent_messages: List[Dict]) -> Dict[str, float]:
         """
