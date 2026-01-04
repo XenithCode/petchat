@@ -70,6 +70,7 @@ class MainWindow(QMainWindow):
         self.new_group_button = QPushButton("新建群聊")
         self.new_group_button.setFixedHeight(24)
         self.new_group_button.clicked.connect(self._on_new_group_clicked)
+        self.new_group_button.hide()
         room_header_layout.addWidget(self.new_group_button)
         sidebar_layout.addLayout(room_header_layout)
         
@@ -451,12 +452,10 @@ class MainWindow(QMainWindow):
             self,
             "关于 pet-chat",
             "pet-chat v1.0\n\n"
-            "一个探索 AI 作为\"第三方观察者\"介入聊天场景的实验性项目。\n\n"
             "功能特性：\n"
             "• P2P 点对点聊天\n"
             "• 情绪宠物系统\n"
             "• 对话记忆提取\n"
             "• AI 决策辅助\n\n"
-            "实验项目，仅供学习交流使用。"
         )
 

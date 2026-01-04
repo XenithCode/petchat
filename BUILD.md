@@ -11,7 +11,7 @@ pip install pyinstaller
 ### 2. 打包
 
 ```bash
-# 方法1：使用spec文件（推荐）
+# 方法1：使用spec文件
 pyinstaller build.spec
 
 # 方法2：使用命令行
