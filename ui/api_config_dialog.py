@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import json
 from ui.theme import Theme
-
+import logging
 
 class APIConfigDialog(QDialog):
     """Dialog for configuring API settings"""
