@@ -1,14 +1,13 @@
-"""Pet widget for displaying emotion state with animations"""
+"""Pet widget for displaying emotion state with animations - Floating Overlay Version"""
 from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout
-from PyQt6.QtCore import Qt, QTimer, QPointF
-from PyQt6.QtGui import QPainter, QBrush, QPen, QRadialGradient, QColor
-import math
-from typing import Dict
+from PyQt6.QtCore import Qt, QTimer, QPoint
+from PyQt6.QtGui import QMouseEvent
+from typing import Dict, Optional
 from ui.theme import Theme
 
 
 class PetWidget(QWidget):
-    """Widget displaying the emotion pet with animations"""
+    """Floating overlay widget displaying the emotion pet with drag support"""
     
     EMOTION_DESCRIPTIONS = {
         "neutral": "氛围平和",
@@ -17,54 +16,109 @@ class PetWidget(QWidget):
         "negative": "氛围消极"
     }
     
+    EMOTION_EMOJIS = {
+        "neutral": "🐱",
+        "happy": "😸",
+        "tense": "🙀",
+        "negative": "😿"
+    }
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_emotion = "neutral"
         self.current_confidence = 1.0
-        self.blink_state = False
-        self.tick_count = 0
-        self.blink_interval = 60  # ticks (approx 3 seconds at 50ms)
-        self.blink_duration = 4   # ticks (approx 200ms)
         
-        # Animation setup
-        self.animation_timer = QTimer(self)
-        self.animation_timer.timeout.connect(self._on_animation_tick)
-        self.start_animation(50)  # 50ms interval = 20 FPS
+        # Drag support
+        self._drag_position: Optional[QPoint] = None
+        self._is_dragging = False
+        
+        # Animation for bounce effect
+        self._bounce_offset = 0
+        self._bounce_direction = 1
+        self._animation_timer = QTimer(self)
+        self._animation_timer.timeout.connect(self._on_animation_tick)
+        self._animation_timer.start(50)  # 20 FPS
         
         self._init_ui()
     
     def _init_ui(self):
         """Initialize UI components"""
+        # Enable transparent background
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        
+        # Set fixed size for the floating pet
+        self.setFixedSize(160, 180)
+        
+        # Main layout
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(Theme.SPACING_SM)
-
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Emoji label - the main pet display
+        self.emoji_label = QLabel(self.EMOTION_EMOJIS["neutral"])
+        self.emoji_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.emoji_label.setStyleSheet("""
+            QLabel {
+                font-size: 80px;
+                background: transparent;
+                border: none;
+            }
+        """)
+        layout.addWidget(self.emoji_label)
+        
+        # Status label
         self.status_label = QLabel(self.EMOTION_DESCRIPTIONS["neutral"])
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px; font-weight: 500;")
+        self.status_label.setStyleSheet(f"""
+            QLabel {{
+                color: {Theme.TEXT_SECONDARY};
+                font-size: {Theme.FONT_SIZE_SM}px;
+                font-weight: 600;
+                background: rgba(255, 255, 255, 0.9);
+                border-radius: {Theme.RADIUS_SM}px;
+                padding: 4px 12px;
+            }}
+        """)
         layout.addWidget(self.status_label)
         
         self.setLayout(layout)
-        # Use Theme colors for background
-        self.setStyleSheet(f"""
-            QWidget {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 {Theme.BG_HOVER}, stop:1 {Theme.BG_SELECTED});
-                border-radius: {Theme.RADIUS_LG}px;
-                padding: {Theme.SPACING_MD}px;
-                border: 2px solid {Theme.BG_SELECTED};
-            }}
-        """)
-        self.setMinimumHeight(180)
+        
+        # Set cursor to indicate draggable
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
     
-    def start_animation(self, interval: int = 50):
-        """Start the animation loop"""
-        self.animation_timer.start(interval)
-        
-    def stop_animation(self):
-        """Stop the animation loop"""
-        self.animation_timer.stop()
-        
+    def _on_animation_tick(self):
+        """Handle animation tick for subtle bounce effect"""
+        if self.current_emotion == "happy":
+            # Bounce animation for happy state
+            self._bounce_offset += self._bounce_direction * 2
+            if self._bounce_offset >= 6:
+                self._bounce_direction = -1
+            elif self._bounce_offset <= -6:
+                self._bounce_direction = 1
+            
+            # Apply bounce to emoji label margin
+            self.emoji_label.setStyleSheet(f"""
+                QLabel {{
+                    font-size: 80px;
+                    background: transparent;
+                    border: none;
+                    margin-top: {-self._bounce_offset}px;
+                }}
+            """)
+        else:
+            # Reset bounce
+            self._bounce_offset = 0
+            self._bounce_direction = 1
+            self.emoji_label.setStyleSheet("""
+                QLabel {
+                    font-size: 80px;
+                    background: transparent;
+                    border: none;
+                }
+            """)
+    
     def update_emotion(self, emotion_scores: Dict[str, float]):
         """
         Update pet emotion based on emotion scores
@@ -78,173 +132,60 @@ class PetWidget(QWidget):
         new_emotion = max(emotion_scores.items(), key=lambda x: x[1])[0]
         new_confidence = emotion_scores.get(new_emotion, 1.0)
         
-        emotion_changed = new_emotion != self.current_emotion
         self.current_emotion = new_emotion
         self.current_confidence = new_confidence
         
+        # Update emoji
+        emoji = self.EMOTION_EMOJIS.get(self.current_emotion, "🐱")
+        self.emoji_label.setText(emoji)
+        
+        # Update description
         description = self.EMOTION_DESCRIPTIONS.get(self.current_emotion, "氛围平和")
         self.status_label.setText(description)
-        
-        if emotion_changed:
-            self.blink_state = False
-        self.update()
-
-    def _on_animation_tick(self):
-        """Handle animation tick"""
-        self._update_blink_state()
-        self.update()
-
-    def _update_blink_state(self):
-        """Update blink state based on tick count"""
-        self.tick_count += 1
-        
-        # Reset cycle
-        cycle_length = self.blink_interval + self.blink_duration
-        current_tick = self.tick_count % cycle_length
-        
-        # Blink when in the duration window
-        is_blinking = current_tick >= self.blink_interval
-        
-        if self.blink_state != is_blinking:
-            self.blink_state = is_blinking
-
+    
+    # ==================== Drag Support ====================
+    
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle mouse press for drag start"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_dragging = True
+            self._drag_position = event.globalPosition().toPoint() - self.pos()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """Handle mouse move for dragging"""
+        if self._is_dragging and self._drag_position is not None:
+            new_pos = event.globalPosition().toPoint() - self._drag_position
+            
+            # Constrain to parent widget bounds
+            if self.parent():
+                parent_widget = self.parent()
+                # Type check for QWidget methods
+                if hasattr(parent_widget, 'width') and hasattr(parent_widget, 'height'):
+                    max_x = parent_widget.width() - self.width()
+                    max_y = parent_widget.height() - self.height()
+                    new_pos.setX(max(0, min(new_pos.x(), max_x)))
+                    new_pos.setY(max(0, min(new_pos.y(), max_y)))
+            
+            self.move(new_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Handle mouse release for drag end"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_dragging = False
+            self._drag_position = None
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+    
     def closeEvent(self, event):
         """Clean up resources"""
-        self.stop_animation()
+        self._animation_timer.stop()
         super().closeEvent(event)
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        width = self.width()
-        height = self.height()
-
-        center_x = width // 2
-        center_y = height // 2 - 10
-
-        float_offset = 0
-        if self.current_emotion == "happy":
-            float_offset = 4 * math.sin(self.tick_count / 6.0)
-        elif self.current_emotion in ("tense", "negative"):
-            float_offset = 2 * math.sin(self.tick_count / 8.0)
-        center_y += int(float_offset)
-
-        # Draw shadow
-        self._draw_shadow(painter, center_x, center_y)
-        
-        # Determine base color
-        base_color = self._get_emotion_color()
-
-        # Draw body
-        self._draw_body(painter, center_x, center_y, base_color)
-
-        # Draw ears
-        self._draw_ears(painter, center_x, center_y, base_color)
-
-        # Draw eyes
-        self._draw_eyes(painter, center_x, center_y)
-
-        # Draw mouth
-        self._draw_mouth(painter, center_x, center_y)
-
-        # Draw whiskers
-        self._draw_whiskers(painter, center_x, center_y)
-
-    def _draw_shadow(self, painter, cx, cy):
-        shadow_radius = 60
-        shadow_color = QColor(0, 0, 0, 40)
-        painter.setBrush(QBrush(shadow_color))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(cx - shadow_radius, cy + 55, shadow_radius * 2, 16)
-
-    def _get_emotion_color(self):
-        if self.current_emotion == "happy":
-            return QColor("#34d399")
-        elif self.current_emotion == "tense":
-            return QColor("#fbbf24")
-        elif self.current_emotion == "negative":
-            return QColor("#fb7185")
-        else:
-            return QColor("#9ca3af")
-
-    def _draw_body(self, painter, cx, cy, color):
-        body_radius = 55
-        gradient = QRadialGradient(cx - 20, cy - 40, body_radius * 1.4)
-        gradient.setColorAt(0.0, QColor(255, 255, 255))
-        gradient.setColorAt(0.4, color.lighter(120))
-        gradient.setColorAt(1.0, color.darker(130))
-
-        painter.setBrush(QBrush(gradient))
-        painter.setPen(QPen(QColor(255, 255, 255, 180), 2))
-        painter.drawEllipse(cx - body_radius, cy - body_radius, body_radius * 2, body_radius * 2)
-
-    def _draw_ears(self, painter, cx, cy, color):
-        body_radius = 55
-        ear_height = 26
-        ear_width = 26
-        ear_color = color.darker(110)
-        painter.setBrush(QBrush(ear_color))
-        painter.setPen(QPen(QColor(255, 255, 255, 160), 2))
-        
-        left_ear = [
-            (cx - body_radius + 18, cy - body_radius + 4),
-            (cx - body_radius + 18 + ear_width, cy - body_radius + 4),
-            (cx - body_radius + 18 + ear_width // 2, cy - body_radius - ear_height),
-        ]
-        right_ear = [
-            (cx + body_radius - 18 - ear_width, cy - body_radius + 4),
-            (cx + body_radius - 18, cy - body_radius + 4),
-            (cx + body_radius - 18 - ear_width // 2, cy - body_radius - ear_height),
-        ]
-        painter.drawPolygon(*[QPointF(x, y) for x, y in left_ear])
-        painter.drawPolygon(*[QPointF(x, y) for x, y in right_ear])
-
-    def _draw_eyes(self, painter, cx, cy):
-        eye_radius = 6
-        eye_offset_x = 18
-        eye_offset_y = 8
-        eye_color = QColor(30, 41, 59)
-
-        if self.blink_state:
-            painter.setPen(QPen(eye_color, 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawLine(cx - eye_offset_x - eye_radius, cy - eye_offset_y,
-                             cx - eye_offset_x + eye_radius, cy - eye_offset_y)
-            painter.drawLine(cx + eye_offset_x - eye_radius, cy - eye_offset_y,
-                             cx + eye_offset_x + eye_radius, cy - eye_offset_y)
-        else:
-            painter.setBrush(QBrush(eye_color))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(cx - eye_offset_x - eye_radius, cy - eye_offset_y - eye_radius,
-                                eye_radius * 2, eye_radius * 2)
-            painter.drawEllipse(cx + eye_offset_x - eye_radius, cy - eye_offset_y - eye_radius,
-                                eye_radius * 2, eye_radius * 2)
-
-    def _draw_mouth(self, painter, cx, cy):
-        mouth_width = 18
-        mouth_height = 10
-        mouth_y = cy + 10
-        mouth_pen = QPen(QColor(30, 41, 59), 2)
-        painter.setPen(mouth_pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-
-        if self.current_emotion == "happy":
-            painter.drawArc(cx - mouth_width // 2, mouth_y - mouth_height // 2,
-                            mouth_width, mouth_height, 0, -180 * 16)
-        elif self.current_emotion == "negative":
-            painter.drawArc(cx - mouth_width // 2, mouth_y,
-                            mouth_width, mouth_height, 0, 180 * 16)
-        else:
-            painter.drawLine(cx - mouth_width // 3, mouth_y,
-                             cx + mouth_width // 3, mouth_y)
-
-    def _draw_whiskers(self, painter, cx, cy):
-        whisker_pen = QPen(QColor(75, 85, 99), 1.4)
-        painter.setPen(whisker_pen)
-        whisker_y = cy + 4
-        painter.drawLine(cx - 8, whisker_y, cx - 32, whisker_y - 4)
-        painter.drawLine(cx - 8, whisker_y + 4, cx - 32, whisker_y + 2)
-        painter.drawLine(cx + 8, whisker_y, cx + 32, whisker_y - 4)
-        painter.drawLine(cx + 8, whisker_y + 4, cx + 32, whisker_y + 2)

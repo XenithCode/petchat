@@ -108,9 +108,7 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout()
         left_layout.setSpacing(10)
         
-        self.pet_widget = PetWidget()
-        self.pet_widget.setMaximumHeight(180)
-        left_layout.addWidget(self.pet_widget)
+        # PetWidget is now a floating overlay, not added to layout
         
         chat_container = QWidget()
         chat_layout = QVBoxLayout()
@@ -169,6 +167,9 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter)
         central_widget.setLayout(main_layout)
         
+        # Initialize floating pet widget (overlay)
+        self._init_floating_pet()
+        
         self.statusBar().showMessage(f"已连接 - {self.user_name}")
         self.statusBar().setStyleSheet(
             f"QStatusBar {{ background-color: {Theme.BG_MUTED}; border-top: 1px solid {Theme.BG_BORDER}; color: {Theme.TEXT_SECONDARY}; }}"
@@ -203,6 +204,50 @@ class MainWindow(QMainWindow):
         about_action = QAction("关于", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+    def _init_floating_pet(self):
+        """Initialize the floating pet widget as an overlay"""
+        # Create pet widget with central widget as parent (not added to any layout)
+        self.pet_widget = PetWidget(self.centralWidget())
+        
+        # Enable transparent background
+        self.pet_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        # Position at bottom-right corner
+        self._position_pet_widget()
+        
+        # Ensure it floats above all other widgets
+        self.pet_widget.raise_()
+        self.pet_widget.show()
+    
+    def _position_pet_widget(self):
+        """Position pet widget at the bottom-right corner of the central widget"""
+        if hasattr(self, 'pet_widget') and self.pet_widget:
+            central = self.centralWidget()
+            if central:
+                x = central.width() - self.pet_widget.width() - 20
+                y = central.height() - self.pet_widget.height() - 40
+                # Ensure position is not negative
+                x = max(20, x)
+                y = max(20, y)
+                self.pet_widget.move(x, y)
+    
+    def resizeEvent(self, event):
+        """Handle window resize to reposition floating pet"""
+        super().resizeEvent(event)
+        # Keep pet widget within bounds after resize
+        if hasattr(self, 'pet_widget') and self.pet_widget:
+            # Only reposition if pet is outside visible area
+            pet_x = self.pet_widget.x()
+            pet_y = self.pet_widget.y()
+            central = self.centralWidget()
+            if central:
+                max_x = central.width() - self.pet_widget.width()
+                max_y = central.height() - self.pet_widget.height()
+                if pet_x > max_x or pet_y > max_y:
+                    new_x = min(pet_x, max(0, max_x))
+                    new_y = min(pet_y, max(0, max_y))
+                    self.pet_widget.move(new_x, new_y)
 
     def _init_sidebar_data(self):
         default_room_item = QListWidgetItem(self.user_name)
