@@ -254,16 +254,47 @@ class MainWindow(QMainWindow):
                     self.pet_widget.move(new_x, new_y)
 
     def _init_sidebar_data(self):
-        default_room_item = QListWidgetItem(self.user_name)
-        default_room_item.setData(Qt.ItemDataRole.UserRole, "default")
-        default_room_item.setData(Qt.ItemDataRole.UserRole + 1, False)
-        self.room_list.addItem(default_room_item)
-        self.room_list.setCurrentItem(default_room_item)
-        
+        # Initialize with current user in user list
         current_user_item = QListWidgetItem(self.user_name)
         current_user_item.setData(Qt.ItemDataRole.UserRole, self.user_name)
         self.user_list.addItem(current_user_item)
         self.user_list.setCurrentItem(current_user_item)
+        # Conversations will be loaded via load_conversations() after database is ready
+    
+    def load_conversations(self, conversations: list):
+        """Load conversations from database into sidebar"""
+        self.room_list.clear()
+        
+        if not conversations:
+            # No conversations yet - create default one
+            default_item = QListWidgetItem("Default Chat")
+            default_item.setData(Qt.ItemDataRole.UserRole, "default")
+            default_item.setData(Qt.ItemDataRole.UserRole + 1, False)  # is_group
+            self.room_list.addItem(default_item)
+            self.room_list.setCurrentItem(default_item)
+            return
+        
+        # Add each conversation to the list
+        for conv in conversations:
+            conv_id = conv.get("id", "")
+            conv_name = conv.get("name", "Unknown")
+            conv_type = conv.get("type", "p2p")
+            last_msg = conv.get("last_message", "")
+            
+            # Create display text with preview
+            if last_msg:
+                display_text = f"{conv_name}\n{last_msg[:30]}..."
+            else:
+                display_text = conv_name
+            
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, conv_id)
+            item.setData(Qt.ItemDataRole.UserRole + 1, conv_type == "group")
+            self.room_list.addItem(item)
+        
+        # Select first conversation
+        if self.room_list.count() > 0:
+            self.room_list.setCurrentRow(0)
 
     def update_role(self, is_host: bool):
         self.is_host = is_host

@@ -204,6 +204,7 @@ class PetChatApp:
         self.message_count = 0
         print("[DEBUG] PetChatApp.__init__ completed")
         self._load_messages(reset=True)
+        self._load_conversations_list()
 
     def _ensure_user_profile(self):
         """Ensure user profile exists with persistent UUID"""
@@ -242,6 +243,15 @@ class PetChatApp:
                 self.window.add_message(msg["sender"], msg["content"], display_ts)
         except Exception as e:
             print(f"Error loading message history: {e}")
+    
+    def _load_conversations_list(self):
+        """Load conversations from database into sidebar"""
+        try:
+            conversations = self.db.get_conversations()
+            self.window.load_conversations(conversations)
+        except Exception as e:
+            print(f"Error loading conversations: {e}")
+    
     
     def _setup_connections(self):
         """Setup signal/slot connections"""
