@@ -268,6 +268,7 @@ class PetChatApp:
         self.window.conversation_selected.connect(self._on_conversation_selected)
         self.window.load_more_requested.connect(self._on_load_more_requested)
         self.window.typing_changed.connect(self._on_local_typing_changed)
+        self.window.reset_user_requested.connect(self._on_reset_user)
         
         if self.is_host:
             self.window.api_config_changed.connect(self._on_api_config_applied)
@@ -304,7 +305,42 @@ class PetChatApp:
     def _on_local_typing_changed(self, is_typing: bool):
         if self.network:
             self.network.send_typing(is_typing)
-
+    
+    def _on_user_discovered(self, user_info: dict):
+        """Handle discovered user from LAN"""
+        user_id = user_info.get("id")
+        user_name = user_info.get("name")
+        ip = user_info.get("ip")
+        port = user_info.get("port")
+        
+        print(f"[DEBUG] User discovered: {user_name} ({user_id}) at {ip}:{port}")
+        
+        # Add/update user in database
+        self.db.upsert_user(user_id, user_name, "", ip, port, is_online=True)
+        
+        # Update UI online user list
+        self._load_online_users()
+    
+    def _on_user_left(self, user_id: str):
+        """Handle user leaving the LAN"""
+        print(f"[DEBUG] User left: {user_id}")
+        
+        # Mark user as offline
+        self.db.set_user_online_status(user_id, False)
+        
+        # Update UI
+        self._load_online_users()
+    
+    def _load_online_users(self):
+        """Load online users into sidebar"""
+        try:
+            users = self.db.get_all_users()
+            online_users = [u for u in users if u.get("is_online") and u.get("id") != self.current_user_id]
+            # TODO: Update UI user list (need to add method to MainWindow)
+            print(f"[DEBUG] Online users: {len(online_users)}")
+        except Exception as e:
+            print(f"Error loading online users: {e}")
+      
     def _on_remote_emotion(self, emotion_scores: dict):
         """Handle emotion scores sent from peer"""
         self.window.update_emotion(emotion_scores)
@@ -372,6 +408,73 @@ class PetChatApp:
         """Handle clear memories request"""
         self.db.clear_memories()
         self._update_memories_display()
+        self.window.add_message("System", "📝 已清空所有记忆")
+    
+    def _on_reset_user(self):
+        """Handle user reset request"""
+        import os
+        import sys
+        from PyQt6.QtWidgets import QMessageBox
+        
+        try:
+            print("[DEBUG] Starting user reset...")
+            
+            # Stop network services first
+            if hasattr(self, 'network') and self.network:
+                print("[DEBUG] Stopping network...")
+                self.network.stop()
+            
+            if hasattr(self, 'discovery_service') and self.discovery_service:
+                print("[DEBUG] Stopping discovery service...")
+                self.discovery_service.stop()
+            
+            # Mark user as offline in database
+            try:
+                self.db.set_user_online_status(self.current_user_id, False)
+                print("[DEBUG] Marked user as offline")
+            except Exception as e:
+                print(f"[WARN] Could not mark user offline: {e}")
+            
+            # Close database connection
+            try:
+                self.db.close()
+                print("[DEBUG] Database closed")
+            except Exception as e:
+                print(f"[WARN] Could not close database: {e}")
+            
+            # Delete database file
+            db_file = "petchat.db"
+            try:
+                if os.path.exists(db_file):
+                    os.remove(db_file)
+                    print(f"[DEBUG] Deleted database file: {db_file}")
+            except Exception as e:
+                print(f"[ERROR] Could not delete database: {e}")
+            
+            # Clear user data from config
+            try:
+                self.config_manager.config.pop('user_id', None)
+                self.config_manager.config.pop('user_name', None)
+                self.config_manager.config.pop('user_avatar', None)
+                self.config_manager._save_config()
+                print("[DEBUG] Cleared user data from config")
+            except Exception as e:
+                print(f"[ERROR] Could not clear config: {e}")
+            
+            # Show success message
+            QMessageBox.information(
+                self.window,
+                "重置成功",
+                "用户数据已清除。\n应用程序将关闭，请重新启动。"
+            )
+            
+            # Close window and quit
+            print("[DEBUG] Closing application...")
+            self.app.quit()
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to reset user: {e}")
+            self.window.add_message("System", f"❌ 重置用户失败: {e}")
     
     def _on_message_received(self, sender: str, content: str):
         """Handle received message"""
@@ -575,7 +678,21 @@ class PetChatApp:
             room_id=self.room_id,
         )
         self._setup_connections()
-
+        
+        # Initialize UDP Discovery for LAN mode (not for relay)
+        if not self.use_relay:
+            from core.network import UDPDiscovery
+            self.discovery_service = UDPDiscovery(
+                user_id=self.current_user_id,
+                user_name=self.current_user_name,
+                tcp_port=self.port
+            )
+            # Connect discovery signals
+            self.discovery_service.user_discovered.connect(self._on_user_discovered)
+            self.discovery_service.user_left.connect(self._on_user_left)
+            # Start discovery
+            self.discovery_service.start()
+            print("[DEBUG] UDP Discovery service started")
         if self.is_host:
             self._init_ai_service()
 

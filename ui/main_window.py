@@ -27,6 +27,8 @@ class MainWindow(QMainWindow):
     conversation_selected = pyqtSignal(str)
     load_more_requested = pyqtSignal()
     typing_changed = pyqtSignal(bool)
+    reset_user_requested = pyqtSignal()  # Request to reset local user data
+    
     
     def __init__(self, is_host: bool = False, user_name: Optional[str] = None, parent=None):
         super().__init__(parent)
@@ -195,6 +197,12 @@ class MainWindow(QMainWindow):
         self.api_action.triggered.connect(self._show_api_config)
         self.settings_menu.addAction(self.api_action)
         self.api_action.setEnabled(self.is_host)
+        
+        # Add Reset User action
+        reset_user_action = QAction("🔄 重置用户数据", self)
+        reset_user_action.triggered.connect(self._on_reset_user_requested)
+        self.settings_menu.addAction(reset_user_action)
+        
         
         view_menu = menubar.addMenu("视图")
         
@@ -532,6 +540,21 @@ class MainWindow(QMainWindow):
         """Handle clear memories request"""
         # Signal will be handled by app controller
         pass
+    
+    def _on_reset_user_requested(self):
+        """Handle reset user data request"""
+        reply = QMessageBox.question(
+            self,
+            "重置用户数据",
+            "此操作将清除本地用户信息，并重新生成新的用户ID。\n"
+            "应用程序将重启。\n\n"
+            "确定要继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.reset_user_requested.emit()
     
     def _show_about(self):
         """Show about dialog"""
