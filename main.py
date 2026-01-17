@@ -240,7 +240,9 @@ class PetChatApp:
             for msg in messages:
                 ts = msg.get("timestamp", "")
                 display_ts = ts[11:16] if len(ts) >= 16 and ts[10] == "T" else ts[-5:]
-                self.window.add_message(msg["sender"], msg["content"], display_ts)
+                # Determine if this message is from me
+                is_me = msg.get("sender_id") == self.current_user_id
+                self.window.add_message(msg["sender"], msg["content"], display_ts, is_me=is_me)
         except Exception as e:
             print(f"Error loading message history: {e}")
     
@@ -269,6 +271,7 @@ class PetChatApp:
         self.window.load_more_requested.connect(self._on_load_more_requested)
         self.window.typing_changed.connect(self._on_local_typing_changed)
         self.window.reset_user_requested.connect(self._on_reset_user)
+        self.window.user_selected.connect(self._on_user_selected_for_chat)
         
         if self.is_host:
             self.window.api_config_changed.connect(self._on_api_config_applied)
@@ -336,10 +339,31 @@ class PetChatApp:
         try:
             users = self.db.get_all_users()
             online_users = [u for u in users if u.get("is_online") and u.get("id") != self.current_user_id]
-            # TODO: Update UI user list (need to add method to MainWindow)
-            print(f"[DEBUG] Online users: {len(online_users)}")
+            self.window.load_online_users(online_users)
+            print(f"[DEBUG] Loaded {len(online_users)} online users to UI")
         except Exception as e:
             print(f"Error loading online users: {e}")
+    
+    def _on_user_selected_for_chat(self, peer_user_id: str, peer_user_name: str):
+        """Handle user selection to start chat"""
+        print(f"[DEBUG] User selected for chat: {peer_user_name} ({peer_user_id})")
+        
+        # Get or create conversation with this user
+        conversation = self.db.get_or_create_conversation(peer_user_id, peer_user_name)
+        conv_id = conversation.get("id")
+        
+        print(f"[DEBUG] Conversation ID: {conv_id}")
+        
+        # Switch to this conversation
+        self.current_conversation_id = conv_id
+        self._load_messages(reset=True)
+        
+        # Refresh conversation list to show new conversation
+        self._load_conversations_list()
+        
+        # Show status message
+        self.window.update_status(f"开始与 {peer_user_name} 的对话")
+      
       
     def _on_remote_emotion(self, emotion_scores: dict):
         """Handle emotion scores sent from peer"""
@@ -478,12 +502,21 @@ class PetChatApp:
     
     def _on_message_received(self, sender: str, content: str):
         """Handle received message"""
-        # Use sender name as sender_id for now (will be updated when we have peer user tracking)
-        self.db.add_message(sender, content, self.current_conversation_id, sender)
-        self.window.add_message(sender, content)
+        # Default to public chat for incoming messages
+        # TODO: Extract conversation_id from network packet in future
+        target_conversation = "public"
+        
+        # Save to database (use sender name as sender_id for now)
+        self.db.add_message(sender, content, target_conversation, sender)
         
         # Update conversation last message
-        self.db.update_conversation_last_message(self.current_conversation_id, content[:50])
+        self.db.update_conversation_last_message(target_conversation, content[:50])
+        
+        # Only display if currently viewing this conversation
+        if target_conversation == self.current_conversation_id:
+            self.window.add_message(sender, content, is_me=False)
+        else:
+            print(f"[DEBUG] Message received for conversation '{target_conversation}' but currently viewing '{self.current_conversation_id}'")
         
         # Trigger AI analysis (host only)
         if self.is_host and self.ai_service:
@@ -492,14 +525,24 @@ class PetChatApp:
     
     def _on_message_sent(self, sender: str, content: str):
         """Handle sent message"""
-        # Send via network
-        self.network.send_message(sender, content)
-        
         # Store with current user's ID
         self.db.add_message(sender, content, self.current_conversation_id, self.current_user_id)
         
         # Update conversation last message
         self.db.update_conversation_last_message(self.current_conversation_id, content[:50])
+        
+        # Send via network based on conversation type
+        if self.current_conversation_id == "public":
+            # Public chat room: broadcast to all users
+            print(f"[DEBUG] Broadcasting to public chat room")
+            # Current P2P network sends to connected peer (broadcast needs implementation)
+            if self.network:
+                self.network.send_message(sender, content)
+        else:
+            # P2P private chat: send to specific user
+            print(f"[DEBUG] Sending P2P message in conversation {self.current_conversation_id}")
+            if self.network:
+                self.network.send_message(sender, content)
         
         # Trigger AI analysis (host only)
         if self.is_host and self.ai_service:
@@ -693,6 +736,8 @@ class PetChatApp:
             # Start discovery
             self.discovery_service.start()
             print("[DEBUG] UDP Discovery service started")
+            # Load initial online users to UI
+            self._load_online_users()
         if self.is_host:
             self._init_ai_service()
 

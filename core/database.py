@@ -77,6 +77,14 @@ class Database:
                     FOREIGN KEY (peer_user_id) REFERENCES users(id)
                 )
             """)
+            
+            # Create default public chat room
+            timestamp = datetime.now().isoformat()
+            cursor.execute("""
+                INSERT OR IGNORE INTO conversations (id, type, name, created_at, updated_at)
+                VALUES ('public', 'group', '公共聊天室', ?, ?)
+            """, (timestamp, timestamp))
+            print("[DEBUG] Created/verified public chat room")
         
         # Check if messages table needs migration
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'")

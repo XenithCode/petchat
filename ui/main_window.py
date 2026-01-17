@@ -28,6 +28,7 @@ class MainWindow(QMainWindow):
     load_more_requested = pyqtSignal()
     typing_changed = pyqtSignal(bool)
     reset_user_requested = pyqtSignal()  # Request to reset local user data
+    user_selected = pyqtSignal(str, str)  # user_id, user_name for starting chat
     
     
     def __init__(self, is_host: bool = False, user_name: Optional[str] = None, parent=None):
@@ -303,6 +304,31 @@ class MainWindow(QMainWindow):
         # Select first conversation
         if self.room_list.count() > 0:
             self.room_list.setCurrentRow(0)
+    
+    def load_online_users(self, users: list):
+        """Load online users from database into sidebar"""
+        self.user_list.clear()
+        
+        # Add current user first
+        current_user_item = QListWidgetItem(f"{self.user_name} (You)")
+        current_user_item.setData(Qt.ItemDataRole.UserRole, None)  # No user_id for self
+        self.user_list.addItem(current_user_item)
+        
+        # Add discovered online users
+        for user in users:
+            user_id = user.get("id")
+            user_name = user.get("name", "Unknown")
+            ip = user.get("ip_address", "")
+            
+            display_text = f"🟢 {user_name}"
+            if ip:
+                display_text += f" ({ip})"
+            
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, user_id)
+            self.user_list.addItem(item)
+        
+        print(f"[DEBUG] Loaded {len(users)} online users to UI")
 
     def update_role(self, is_host: bool):
         self.is_host = is_host
@@ -319,12 +345,21 @@ class MainWindow(QMainWindow):
         if is_typing:
             self.statusBar().showMessage("对方正在输入...", 1000)
     
-    def add_message(self, sender: str, content: str, timestamp: Optional[str] = None):
+    def add_message(self, sender: str, content: str, timestamp: Optional[str] = None, is_me: bool = None, sender_avatar: str = ""):
         """
         Add a message to the chat display
+        Args:
+            sender: Name of the message sender
+            content: Message content  
+            timestamp: Message timestamp
+            is_me: True if from current user, False if from others, None to auto-detect
         """
         if timestamp is None:
             timestamp = datetime.now().strftime("%H:%M")
+        
+        # Auto-detect is_me if not provided (backward compatibility)
+        if is_me is None:
+            is_me = (sender == self.user_name)
 
         previous_timestamp = self.message_history[-1]["timestamp"] if self.message_history else None
         self.message_history.append({"sender": sender, "content": content, "timestamp": timestamp})
@@ -339,15 +374,37 @@ class MainWindow(QMainWindow):
         
         # Container for the whole row
         bubble_widget = QWidget()
-        bubble_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) # Critical for transparency
+        bubble_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         bubble_layout = QHBoxLayout()
         bubble_layout.setContentsMargins(10, 5, 10, 5)
-        bubble_layout.setSpacing(10)
+        bubble_layout.setSpacing(8)
 
-        # Message Content (Text + Time)
-        content_layout = QVBoxLayout()
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(4)
+        # Avatar (only show for other users)
+        if not is_me:
+            avatar_label = QLabel(sender_avatar if sender_avatar else "👤")
+            avatar_label.setStyleSheet(
+                "font-size: 32px; background: transparent; min-width: 40px; max-width: 40px;"
+            )
+            avatar_label.setAlignment(Qt.AlignmentFlag.AlignTop)
+            bubble_layout.addWidget(avatar_label)
+
+        # Content container (includes username + message)
+        content_container = QVBoxLayout()
+        content_container.setContentsMargins(0, 0, 0, 0)
+        content_container.setSpacing(2)
+        
+        # Username (only show for other users)
+        if not is_me:
+            username_label = QLabel(sender)
+            username_label.setStyleSheet(
+                f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; font-weight: bold; background: transparent;"
+            )
+            content_container.addWidget(username_label)
+
+        # Message bubble layout (text + time)
+        message_bubble = QVBoxLayout()
+        message_bubble.setContentsMargins(0, 0, 0, 0)
+        message_bubble.setSpacing(4)
 
         text_label = QLabel(content)
         text_label.setWordWrap(True)
@@ -363,8 +420,8 @@ class MainWindow(QMainWindow):
             f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; background: transparent;"
         )
 
-        # Styling based on sender
-        if sender == self.user_name:
+        # Styling based on is_me instead of sender name
+        if is_me:
             # Self message: Primary Color Background, White Text
             text_label.setStyleSheet(
                 f"background-color: {Theme.PRIMARY}; color: #FFFFFF;"
@@ -378,14 +435,17 @@ class MainWindow(QMainWindow):
                 f" border: 1px solid {Theme.BG_BORDER};"
             )
 
-        content_layout.addWidget(text_label)
-        content_layout.addWidget(time_label, 0, Qt.AlignmentFlag.AlignRight)
+        message_bubble.addWidget(text_label)
+        message_bubble.addWidget(time_label, 0, Qt.AlignmentFlag.AlignRight)
+        
+        # Add message bubble to content container
+        content_container.addLayout(message_bubble)
 
-        if sender == self.user_name:
+        if is_me:
             bubble_layout.addStretch()
-            bubble_layout.addLayout(content_layout)
+            bubble_layout.addLayout(content_container)
         else:
-            bubble_layout.addLayout(content_layout)
+            bubble_layout.addLayout(content_container)
             bubble_layout.addStretch()
 
         bubble_widget.setLayout(bubble_layout)
@@ -465,17 +525,20 @@ class MainWindow(QMainWindow):
         if not items:
             return
         item = items[0]
-        user_name = item.text()
-        self.statusBar().showMessage(f"查看用户：{user_name}", 3000)
-        if self._current_is_group and user_name != self.user_name:
-            text = self.message_input.text()
-            mention = f"@{user_name}"
-            if mention not in text:
-                if text and not text.endswith(" "):
-                    text += " "
-                text += mention + " "
-                self.message_input.setText(text)
-                self.message_input.setCursorPosition(len(text))
+        user_id = item.data(Qt.ItemDataRole.UserRole)
+        
+        # Skip if selecting yourself
+        if not user_id:
+            self.statusBar().showMessage("这是你自己", 2000)
+            return
+        
+        # Extract user_name from display text (remove 🟢 and IP address)
+        user_name = item.text().replace("🟢 ", "").split(" (")[0]
+        
+        self.statusBar().showMessage(f"开始与 {user_name} 的对话", 3000)
+        
+        # Emit signal to create/open conversation
+        self.user_selected.emit(user_id, user_name)
 
     def _on_load_more_clicked(self):
         self.load_more_requested.emit()
