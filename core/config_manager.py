@@ -29,8 +29,12 @@ class ConfigManager:
                 return {}
         return {}
     
-    def _save_config(self):
+    def save_config(self):
         """Save configuration to file"""
+        self._save_config()
+
+    def _save_config(self):
+        """Internal save method"""
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)

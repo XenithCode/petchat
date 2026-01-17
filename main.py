@@ -1,10 +1,8 @@
-"""Main entry point for pet-chat application"""
 import sys
 import argparse
 import socket
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QButtonGroup, QMessageBox
-from PyQt6.QtCore import Qt, QTimer
-
+from PyQt6.QtCore import Qt, QTimer, QObject
 from core.network import NetworkManager
 from core.database import Database
 from core.ai_service import AIService
@@ -17,138 +15,10 @@ from config.settings import Settings
 from ui.theme import Theme
 
 
-class RoleSelectionDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.selected_role = "host"
-        self.host_ip = ""
-        self.port_text = str(Settings.DEFAULT_PORT)
-        self.relay_port_text = str(Settings.DEFAULT_RELAY_PORT)
-        self.use_relay = False
-        self.relay_host = ""
-        self.room_id = "default"
-        self.setWindowTitle("选择启动模式")
-        self.setModal(True)
-        self.setMinimumWidth(420)
-        self._init_ui()
-
-    def _init_ui(self):
-        layout = QVBoxLayout()
-        layout.setSpacing(Theme.SPACING_MD)
-        self.setStyleSheet(Theme.get_stylesheet())
-
-        title = QLabel("选择启动模式")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet(
-            f"font-size: {Theme.FONT_SIZE_XL}px; font-weight: 600; color: {Theme.TEXT_PRIMARY};"
-        )
-        layout.addWidget(title)
-        
-        hint = QLabel("请选择您的角色：房主负责创建房间，访客可以加入现有房间。可选使用中转服务器实现跨网段连接。")
-        hint.setWordWrap(True)
-        hint.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px;")
-        layout.addWidget(hint)
-
-        role_layout = QHBoxLayout()
-        host_radio = QRadioButton("Host（房主）")
-        guest_radio = QRadioButton("Guest（访客）")
-        host_radio.setChecked(True)
-
-        group = QButtonGroup(self)
-        group.addButton(host_radio)
-        group.addButton(guest_radio)
-
-        role_layout.addWidget(host_radio)
-        role_layout.addWidget(guest_radio)
-        role_layout.addStretch()
-        layout.addLayout(role_layout)
-
-        ip_label = QLabel("Host IP（仅 Guest 需要填写，或中转服务器地址）")
-        self.ip_input = QLineEdit()
-        self.ip_input.setPlaceholderText("例如 192.168.1.100")
-        self.ip_input.setEnabled(False)
-
-        layout.addWidget(ip_label)
-        layout.addWidget(self.ip_input)
-
-        port_label = QLabel("端口")
-        self.port_input = QLineEdit(self.port_text)
-        layout.addWidget(port_label)
-        layout.addWidget(self.port_input)
-
-        relay_label = QLabel("中转服务器配置（可选，用于不在同一网段时）")
-        relay_label.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px;")
-        layout.addWidget(relay_label)
-
-        relay_layout = QHBoxLayout()
-        self.relay_checkbox = QRadioButton("使用中转服务器")
-        relay_layout.addWidget(self.relay_checkbox)
-        layout.addLayout(relay_layout)
-
-        relay_host_label = QLabel("中转服务器地址")
-        self.relay_host_input = QLineEdit()
-        self.relay_host_input.setPlaceholderText("例如 your-vps.com 或 1.2.3.4")
-        relay_port_label = QLabel("中转端口")
-        self.relay_port_input = QLineEdit(self.relay_port_text)
-        self.relay_port_input.setPlaceholderText("默认 9000")
-        room_id_label = QLabel("房间ID（Host 与 Guest 需一致）")
-        self.room_id_input = QLineEdit()
-        self.room_id_input.setPlaceholderText("例如 my-room-1")
-
-        layout.addWidget(relay_host_label)
-        layout.addWidget(self.relay_host_input)
-        layout.addWidget(relay_port_label)
-        layout.addWidget(self.relay_port_input)
-        layout.addWidget(room_id_label)
-        layout.addWidget(self.room_id_input)
-
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        cancel_btn = QPushButton("取消")
-        ok_btn = QPushButton("确定")
-        cancel_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {Theme.SECONDARY}; color: {Theme.PRIMARY_TEXT}; }}"
-        )
-        
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(ok_btn)
-        layout.addLayout(button_layout)
-
-        self.setLayout(layout)
-
-        def on_host_selected(checked):
-            if checked:
-                self.selected_role = "host"
-                self.ip_input.setEnabled(False)
-
-        def on_guest_selected(checked):
-            if checked:
-                self.selected_role = "guest"
-                self.ip_input.setEnabled(True)
-
-        host_radio.toggled.connect(on_host_selected)
-        guest_radio.toggled.connect(on_guest_selected)
-
-        def on_ok():
-            self.host_ip = self.ip_input.text().strip()
-            self.port_text = self.port_input.text().strip() or str(Settings.DEFAULT_PORT)
-            self.use_relay = self.relay_checkbox.isChecked()
-            self.relay_host = self.relay_host_input.text().strip()
-            self.relay_port_text = self.relay_port_input.text().strip()
-            self.room_id = self.room_id_input.text().strip() or "default"
-            self.accept()
-
-        def on_cancel():
-            self.reject()
-
-        ok_btn.clicked.connect(on_ok)
-        cancel_btn.clicked.connect(on_cancel)
-
-
-class PetChatApp:
+class PetChatApp(QObject):
     """Main application controller"""
     
-    def __init__(self, is_host: bool, host_ip: str, port: int, from_cli_args: bool):
+    def __init__(self, from_cli_args: bool = False):
         print("[DEBUG] PetChatApp.__init__ starting...")
         
         # Create QApplication first, before any other PyQt6 operations
@@ -161,15 +31,11 @@ class PetChatApp:
         self.app.setStyleSheet(Theme.get_stylesheet())
         print("[DEBUG] Theme applied")
         
-        self.is_host = is_host
-        self.host_ip = host_ip
-        self.port = port
         self.from_cli_args = from_cli_args
-        self.use_relay = False
-        self.relay_host = Settings.DEFAULT_RELAY_HOST
-        self.relay_port = Settings.DEFAULT_RELAY_PORT
-        self.room_id = "default"
-        print(f"[DEBUG] Configuration: is_host={is_host}, host_ip={host_ip}, port={port}, from_cli_args={from_cli_args}")
+        self.server_ip = "127.0.0.1" # Default, will be updated from config
+        self.server_port = 8888
+        
+        print(f"[DEBUG] Configuration: from_cli_args={from_cli_args}")
         
         print("[DEBUG] Creating ConfigManager...")
         self.config_manager = ConfigManager()
@@ -186,14 +52,14 @@ class PetChatApp:
         # Register local user in database
         self.db.upsert_user(self.current_user_id, self.current_user_name, self.current_user_avatar, is_online=True)
         
-        self.current_conversation_id = "default"  # Changed from session_id
+        self.current_conversation_id = "default"
         self.loaded_message_limit = 50
         
-        self.ai_service = None
-        self.discovery_service = None  # Will be initialized in start()
+        self.ai_service = None # AI service can be enabled optionally later
+        self.discovery_service = None
         
         print("[DEBUG] Creating MainWindow...")
-        self.window = MainWindow(is_host=is_host, user_name=self.current_user_name)
+        self.window = MainWindow(user_id=self.current_user_id, user_name=self.current_user_name, user_avatar=self.current_user_avatar)
         print("[DEBUG] MainWindow created")
         
         print("[DEBUG] Registering window...")
@@ -260,10 +126,16 @@ class PetChatApp:
         self.network.message_received.connect(self._on_message_received)
         self.network.connection_status_changed.connect(self._on_connection_status)
         self.network.error_occurred.connect(self._on_network_error)
+        if self.ai_service:
+            # Connect AI signals
+            self.ai_service.suggestion_ready.connect(self._on_ai_suggestion)
+            self.ai_service.emotion_analyzed.connect(self._on_ai_emotion)
+            print("[DEBUG] AI service started")
         self.network.ai_suggestion_received.connect(self._on_remote_suggestion)
         self.network.ai_emotion_received.connect(self._on_remote_emotion)
         self.network.ai_memories_received.connect(self._on_remote_memories)
         self.network.ai_request_received.connect(self._on_remote_ai_request)
+        self.network.typing_status_changed.connect(self._on_typing_status)
         
         self.window.message_sent.connect(self._on_message_sent)
         self.window.ai_requested.connect(self._on_ai_requested)
@@ -273,10 +145,9 @@ class PetChatApp:
         self.window.reset_user_requested.connect(self._on_reset_user)
         self.window.user_selected.connect(self._on_user_selected_for_chat)
         
-        if self.is_host:
-            self.window.api_config_changed.connect(self._on_api_config_applied)
-            self.window.api_config_reset.connect(self._on_api_config_reset)
-            self.window.memory_viewer.clear_requested.connect(self._on_clear_memories)
+        self.window.api_config_changed.connect(self._on_api_config_applied)
+        self.window.api_config_reset.connect(self._on_api_config_reset)
+        self.window.memory_viewer.clear_requested.connect(self._on_clear_memories)
         
         # Update memories display periodically
         self._update_memories_display()
@@ -348,18 +219,28 @@ class PetChatApp:
         """Handle user selection to start chat"""
         print(f"[DEBUG] User selected for chat: {peer_user_name} ({peer_user_id})")
         
-        # Get or create conversation with this user
-        conversation = self.db.get_or_create_conversation(peer_user_id, peer_user_name)
-        conv_id = conversation.get("id")
+        # Create or find private conversation
+        # For now, we use the peer_user_id as the conversation_id for private chats
+        # In a real app, this should be a unique UUID for the conversation
+        conversation_id = peer_user_id 
         
-        print(f"[DEBUG] Conversation ID: {conv_id}")
+        # Ensure conversation exists in DB
+        self.db.get_or_create_conversation(conversation_id, "p2p", peer_user_name)
         
         # Switch to this conversation
-        self.current_conversation_id = conv_id
+        self.current_conversation_id = conversation_id
+        
+        # Reload conversations list in sidebar to show the new one
+        self._load_conversations_list()
+        
+        # Select it in UI
+        # TODO: Select the item in sidebar (requires mapping conversation_id to row)
+        
+        # Load messages for this conversation
         self._load_messages(reset=True)
         
-        # Refresh conversation list to show new conversation
-        self._load_conversations_list()
+        # Update window title or header?
+        self.window.setWindowTitle(f"pet-chat - 与 {peer_user_name} 聊天中")
         
         # Show status message
         self.window.update_status(f"开始与 {peer_user_name} 的对话")
@@ -374,17 +255,15 @@ class PetChatApp:
         self.window.update_memories(memories)
 
     def _on_remote_ai_request(self):
-        """Handle explicit AI request forwarded from guest to host"""
-        if self.is_host and self.ai_service:
+        """Handle explicit AI request"""
+        if self.ai_service:
             self._on_ai_requested()
 
-    def _on_typing_status(self, is_typing: bool):
-        self.window.show_typing_status(is_typing)
+    def _on_typing_status(self, sender_name: str, is_typing: bool):
+        self.window.show_typing_status(sender_name, is_typing)
 
     def _init_ai_service(self):
         """Initialize AI service with config"""
-        if not self.is_host:
-            return
         
         api_key = self.config_manager.get_api_key()
         if api_key:
@@ -500,28 +379,38 @@ class PetChatApp:
             print(f"[ERROR] Failed to reset user: {e}")
             self.window.add_message("System", f"❌ 重置用户失败: {e}")
     
-    def _on_message_received(self, sender: str, content: str):
+    def _on_message_received(self, sender_id: str, sender_name: str, content: str, target: str, sender_avatar: str = ""):
         """Handle received message"""
-        # Default to public chat for incoming messages
-        # TODO: Extract conversation_id from network packet in future
-        target_conversation = "public"
+        # Determine conversation ID
+        if target == "public":
+            conversation_id = "public"
+            # Ensure public conversation exists (should always exist)
+        else:
+            # Private message: conversation with the sender
+            conversation_id = sender_id
+            # Ensure conversation exists
+            self.db.get_or_create_conversation(conversation_id, "p2p", sender_name)
+            
+        target_conversation = conversation_id
         
-        # Save to database (use sender name as sender_id for now)
-        self.db.add_message(sender, content, target_conversation, sender)
+        # Save to database
+        self.db.add_message(sender_name, content, target_conversation, sender_id)
         
         # Update conversation last message
         self.db.update_conversation_last_message(target_conversation, content[:50])
         
-        # Only display if currently viewing this conversation
+        # If currently viewing this conversation, add to UI
         if target_conversation == self.current_conversation_id:
-            self.window.add_message(sender, content, is_me=False)
+            self.window.add_message(sender_name, content, is_me=False, sender_avatar=sender_avatar)
         else:
             print(f"[DEBUG] Message received for conversation '{target_conversation}' but currently viewing '{self.current_conversation_id}'")
         
         # Trigger AI analysis (host only)
-        if self.is_host and self.ai_service:
-            self.message_count += 1
-            self._trigger_ai_analysis()
+        # In CS mode, maybe we don't trigger AI on every message unless we are "hosting" the AI bot?
+        # For now, disable or keep check
+        if self.ai_service:
+             # self.message_count += 1
+             pass
     
     def _on_message_sent(self, sender: str, content: str):
         """Handle sent message"""
@@ -531,23 +420,26 @@ class PetChatApp:
         # Update conversation last message
         self.db.update_conversation_last_message(self.current_conversation_id, content[:50])
         
-        # Send via network based on conversation type
-        if self.current_conversation_id == "public":
-            # Public chat room: broadcast to all users
-            print(f"[DEBUG] Broadcasting to public chat room")
-            # Current P2P network sends to connected peer (broadcast needs implementation)
-            if self.network:
-                self.network.send_message(sender, content)
-        else:
-            # P2P private chat: send to specific user
-            print(f"[DEBUG] Sending P2P message in conversation {self.current_conversation_id}")
-            if self.network:
-                self.network.send_message(sender, content)
+        # Send via network
+        target = "public"
+        if self.current_conversation_id != "public":
+            # For private chat, conversation_id might be the user_id or a composite
+            # Assuming for now we use the conversation_id as target if it's not public
+            # TODO: Better mapping if we use composite conversation IDs
+            target = self.current_conversation_id
+            
+        if self.network and self.network.running:
+            print(f"[DEBUG] Sending message to {target}: {content[:30]}")
+            self.network.send_chat_message(target, content)
+
         
         # Trigger AI analysis (host only)
-        if self.is_host and self.ai_service:
+        # Trigger AI analysis if service is available (regardless of role, or if enabled in config)
+        if self.ai_service:
+            # We can add a config check here later, e.g., if self.config.enable_ai_analysis
             self.message_count += 1
-            self._trigger_ai_analysis()
+            # self._trigger_ai_analysis() # Temporarily disable auto-trigger until better logic
+            pass
     
     def _trigger_ai_analysis(self):
         """Trigger AI analysis based on message count"""
@@ -626,7 +518,11 @@ class PetChatApp:
     
     def _on_ai_requested(self):
         """Handle explicit AI request (/ai command)"""
-        if not self.is_host:
+        # In CS architecture, if we have AI service initialized (via API Key),
+        # we can handle the request locally or act as a host.
+        # If we don't have AI service, we request it from the network.
+        
+        if not self.ai_service:
             if hasattr(self, "network") and self.network and self.network.running:
                 self.window.update_status("已向 Host 请求 AI 分析...")
                 self.network.send_ai_request()
@@ -637,12 +533,7 @@ class PetChatApp:
                 })
             return
 
-        if not self.ai_service:
-            self.window.show_suggestion({
-                "title": "AI服务不可用",
-                "content": "AI服务未初始化。请检查API Key配置。"
-            })
-            return
+        # If we have AI service, we proceed to generate suggestion
         
         recent_messages = self.db.get_recent_messages(10)
         if len(recent_messages) < 2:
@@ -677,95 +568,57 @@ class PetChatApp:
                 "content": f"处理请求时出错: {str(e)}"
             })
     
+    
     def start(self):
         """Start the application"""
-        if not self.from_cli_args:
-            dialog = RoleSelectionDialog(self.window)
-            result = dialog.exec()
-            if result != QDialog.DialogCode.Accepted:
-                return
-            if dialog.selected_role == "host":
-                self.is_host = True
-                self.host_ip = Settings.DEFAULT_HOST_IP
-            else:
-                self.is_host = False
-                self.host_ip = dialog.host_ip or Settings.DEFAULT_GUEST_IP
-            try:
-                self.port = int(dialog.port_text)
-            except ValueError:
-                self.port = Settings.DEFAULT_PORT
-            self.use_relay = getattr(dialog, "use_relay", False)
-            relay_host_text = getattr(dialog, "relay_host", "").strip()
-            if self.use_relay:
-                if relay_host_text:
-                    self.relay_host = relay_host_text
-                else:
-                    self.relay_host = Settings.DEFAULT_RELAY_HOST
-            else:
-                self.relay_host = self.host_ip
-            try:
-                relay_port_text = getattr(dialog, "relay_port_text", "") or str(Settings.DEFAULT_RELAY_PORT)
-                self.relay_port = int(relay_port_text)
-            except ValueError:
-                self.relay_port = Settings.DEFAULT_RELAY_PORT
-            self.room_id = getattr(dialog, "room_id", "default") or "default"
-            self.window.update_role(self.is_host)
-
-        self.network = NetworkManager(
-            is_host=self.is_host,
-            host_ip=self.host_ip,
-            port=self.port,
-            use_relay=self.use_relay,
-            relay_host=self.relay_host,
-            relay_port=self.relay_port,
-            room_id=self.room_id,
-        )
+        # Initialize User ID first
+        self.current_user_id, self.current_user_name, self.current_user_avatar = self._ensure_user_profile()
+        
+        # Determine server configuration
+        if self.from_cli_args and self.server_ip:
+            server_ip = self.server_ip
+        else:
+            server_ip = self.config_manager.config.get("server_ip", "127.0.0.1")
+            
+            # Ask for Server IP if not from CLI
+            from PyQt6.QtWidgets import QInputDialog
+            ip, ok = QInputDialog.getText(
+                None, 
+                "连接服务器", 
+                "请输入服务器IP地址:", 
+                text=server_ip
+            )
+            if ok and ip:
+                server_ip = ip
+                # Save to config
+                self.config_manager.config["server_ip"] = server_ip
+                self.config_manager.save_config()
+            elif not ok:
+                sys.exit(0)
+            
+        server_port = 8888
+        
+        # Create Network Manager
+        self.network = NetworkManager()
         self._setup_connections()
         
-        # Initialize UDP Discovery for LAN mode (not for relay)
-        if not self.use_relay:
-            from core.network import UDPDiscovery
-            self.discovery_service = UDPDiscovery(
-                user_id=self.current_user_id,
-                user_name=self.current_user_name,
-                tcp_port=self.port
-            )
-            # Connect discovery signals
-            self.discovery_service.user_discovered.connect(self._on_user_discovered)
-            self.discovery_service.user_left.connect(self._on_user_left)
-            # Start discovery
-            self.discovery_service.start()
-            print("[DEBUG] UDP Discovery service started")
-            # Load initial online users to UI
-            self._load_online_users()
-        if self.is_host:
-            self._init_ai_service()
-
-        if self.is_host:
-            if self.use_relay:
-                self.window.update_status(f"Host模式 - 使用中转服务器 {self.relay_host}:{self.relay_port} 房间 {self.room_id}")
-                self.network.start_host()
-            else:
-                self.network.start_host()
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    local_ip = s.getsockname()[0]
-                    s.close()
-                    self.window.update_status(f"Host模式 - 本地IP: {local_ip}, 端口: {self.port}")
-                except:
-                    self.window.update_status(f"Host模式 - 端口: {self.port}")
-        else:
-            if self.use_relay:
-                self.window.update_status(f"Guest模式 - 使用中转服务器 {self.relay_host}:{self.relay_port} 房间 {self.room_id}")
-                self.network.connect_as_guest()
-            else:
-                self.window.update_status("正在连接 Host...")
-                self.network.connect_as_guest()
+        
+        # Connect to Server (as Client)
+        print(f"[DEBUG] Connecting to server at {server_ip}:{server_port}...")
+        self.network.connect_to_server(
+            server_ip, 
+            server_port, 
+            self.current_user_id, 
+            self.current_user_name, 
+            self.current_user_avatar
+        )
+        
+        # Initial signals
+        self.window.update_status(f"正在连接服务器 {server_ip}...")
         
         # Show window
-        print("[DEBUG] Showing window...")
         self.window.show()
+        print("[DEBUG] Window shown")
         print("[DEBUG] Window shown")
         
         # Run application
@@ -775,41 +628,20 @@ class PetChatApp:
         sys.exit(result)
 
 
-def get_local_ip():
-    """Get local IP address"""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except:
-        return "127.0.0.1"
+
 
 
 def main():
     """Main entry point"""
-    print("Starting pet-chat application...")
-    parser = argparse.ArgumentParser(description="pet-chat - AI-powered chat application")
-    parser.add_argument("--host", action="store_true", help="Run as host (server)")
-    parser.add_argument("--guest", action="store_true", help="Run as guest (client)")
-    parser.add_argument("--host-ip", type=str, default=Settings.DEFAULT_GUEST_IP, 
-                       help=f"Host IP address (default: {Settings.DEFAULT_GUEST_IP})")
-    parser.add_argument("--port", type=int, default=Settings.DEFAULT_PORT,
-                       help=f"Port number (default: {Settings.DEFAULT_PORT})")
-    
+    parser = argparse.ArgumentParser(description="Pet Chat Client")
+    parser.add_argument("--server-ip", help="Server IP address to connect to automatically")
     args = parser.parse_args()
-    print(f"Parsed args: host={args.host}, guest={args.guest}, host_ip={args.host_ip}, port={args.port}")
-    
-    # Determine role
-    is_host = args.host
-    # If no role specified in CLI, we'll ask in GUI (unless pure CLI mode is desired, but here we have GUI)
-    # The App controller handles the dialog if from_cli_args is False
-    from_cli_args = args.host or args.guest
-    print(f"Role: {'host' if is_host else 'guest'}, from_cli_args={from_cli_args}")
     
     print("Creating PetChatApp instance...")
-    app = PetChatApp(is_host=is_host, host_ip=args.host_ip, port=args.port, from_cli_args=from_cli_args)
+    app = PetChatApp(from_cli_args=bool(args.server_ip))
+    if args.server_ip:
+        app.server_ip = args.server_ip
+        
     print("PetChatApp instance created, starting application...")
     app.start()
     print("Application started")

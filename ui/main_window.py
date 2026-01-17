@@ -31,10 +31,11 @@ class MainWindow(QMainWindow):
     user_selected = pyqtSignal(str, str)  # user_id, user_name for starting chat
     
     
-    def __init__(self, is_host: bool = False, user_name: Optional[str] = None, parent=None):
+    def __init__(self, user_id: str, user_name: Optional[str] = None, user_avatar: Optional[str] = None, parent=None):
         super().__init__(parent)
-        self.is_host = is_host
-        self.user_name = user_name if user_name else ("Host" if is_host else "Guest")
+        self.user_id = user_id
+        self.user_name = user_name if user_name else "User"
+        self.user_avatar = user_avatar if user_avatar else ""
         self.message_history = []
         self._current_is_group = False
         self._typing = False
@@ -193,11 +194,11 @@ class MainWindow(QMainWindow):
         file_menu.addAction(exit_action)
         
         self.settings_menu = menubar.addMenu("设置")
-        self.api_action = QAction("⚙ API 配置", self)
+        self.api_action = QAction("AI 配置", self)
         self.api_action.setShortcut("Ctrl+K")
         self.api_action.triggered.connect(self._show_api_config)
         self.settings_menu.addAction(self.api_action)
-        self.api_action.setEnabled(self.is_host)
+        self.api_action.setEnabled(True) # AI service can be configured by any client
         
         # Add Reset User action
         reset_user_action = QAction("🔄 重置用户数据", self)
@@ -329,21 +330,14 @@ class MainWindow(QMainWindow):
             self.user_list.addItem(item)
         
         print(f"[DEBUG] Loaded {len(users)} online users to UI")
-
-    def update_role(self, is_host: bool):
-        self.is_host = is_host
-        self.user_name = "Host" if is_host else "Guest"
-        self.setWindowTitle(f"pet-chat - {self.user_name}")
-        if hasattr(self, "api_action"):
-            self.api_action.setEnabled(self.is_host)
     
     def clear_messages(self):
         self.message_history = []
         self.message_display.clear()
     
-    def show_typing_status(self, is_typing: bool):
+    def show_typing_status(self, sender_name: str, is_typing: bool):
         if is_typing:
-            self.statusBar().showMessage("对方正在输入...", 1000)
+            self.statusBar().showMessage(f"{sender_name} 正在输入...", 2000)
     
     def add_message(self, sender: str, content: str, timestamp: Optional[str] = None, is_me: bool = None, sender_avatar: str = ""):
         """
@@ -383,9 +377,9 @@ class MainWindow(QMainWindow):
         if not is_me:
             avatar_label = QLabel(sender_avatar if sender_avatar else "👤")
             avatar_label.setStyleSheet(
-                "font-size: 32px; background: transparent; min-width: 40px; max-width: 40px;"
+                "font-size: 32px; background: transparent; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;"
             )
-            avatar_label.setAlignment(Qt.AlignmentFlag.AlignTop)
+            avatar_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
             bubble_layout.addWidget(avatar_label)
 
         # Content container (includes username + message)
@@ -491,7 +485,7 @@ class MainWindow(QMainWindow):
         self.message_sent.emit(self.user_name, content)
         
         # Add to display
-        self.add_message(self.user_name, content)
+        self.add_message(self.user_name, content, sender_avatar=self.user_avatar)
         
         # Clear input
         self.message_input.clear()
@@ -624,9 +618,9 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于 pet-chat",
-            "pet-chat v1.0\n\n"
+            "pet-chat v1.1\n\n"
             "功能特性：\n"
-            "• P2P 点对点聊天\n"
+            "• Client-Server 架构聊天\n"
             "• 情绪宠物系统\n"
             "• 对话记忆提取\n"
             "• AI 决策辅助\n\n"

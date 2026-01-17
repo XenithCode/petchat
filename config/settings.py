@@ -8,10 +8,6 @@ class Settings:
     
     # Default values
     DEFAULT_PORT = 8888
-    DEFAULT_RELAY_PORT = 9000
-    DEFAULT_RELAY_HOST = "116.205.112.104"
-    DEFAULT_HOST_IP = "0.0.0.0"  # Bind to all interfaces for host
-    DEFAULT_GUEST_IP = "127.0.0.1"
     
     # Emotion analysis settings
     EMOTION_ANALYSIS_INTERVAL = 5  # Analyze emotion every N messages

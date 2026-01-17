@@ -3,30 +3,34 @@ import time
 import sys
 import os
 
-def launch_instances(num_guests=1):
-    """Launch one host and multiple guests"""
+def launch_instances(num_clients=2):
+    """Launch Server and multiple Clients"""
     # Get python executable
     python_exe = sys.executable
-    script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "main.py"))
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    server_script = os.path.join(root_dir, "server.py")
+    client_script = os.path.join(root_dir, "main.py")
     
     processes = []
     
-    # Launch Host
-    print("Launching Host...")
-    host_proc = subprocess.Popen([python_exe, script_path, "--host", "--port", "8888"])
-    processes.append(host_proc)
+    # Launch Server
+    print("Launching Server...")
+    # Run server in a new console window if possible, or just background
+    # On Windows, creationflags=subprocess.CREATE_NEW_CONSOLE can open new window
+    server_proc = subprocess.Popen([python_exe, server_script])
+    processes.append(server_proc)
     
-    # Wait for host to start
+    # Wait for server to start
     time.sleep(2)
     
-    # Launch Guests
-    for i in range(num_guests):
-        print(f"Launching Guest {i+1}...")
-        guest_proc = subprocess.Popen([python_exe, script_path, "--guest", "--host-ip", "127.0.0.1", "--port", "8888"])
-        processes.append(guest_proc)
+    # Launch Clients
+    for i in range(num_clients):
+        print(f"Launching Client {i+1}...")
+        client_proc = subprocess.Popen([python_exe, client_script, "--server-ip", "127.0.0.1"])
+        processes.append(client_proc)
         time.sleep(1)
         
-    print(f"Launched 1 Host and {num_guests} Guests.")
+    print(f"Launched Server and {num_clients} Clients.")
     print("Press Ctrl+C to stop all instances.")
     
     try:
@@ -43,4 +47,4 @@ def launch_instances(num_guests=1):
             p.terminate()
             
 if __name__ == "__main__":
-    launch_instances(num_guests=2)
+    launch_instances(num_clients=2)

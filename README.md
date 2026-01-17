@@ -80,20 +80,19 @@ pip install -r requirements.txt
 
 ### 3. 运行应用
 
-* **房主模式 (Host)**: 负责创建房间并提供 AI 分析服务。
-```bash
-python main.py --host --port 8888
+## 架构说明
 
+本项目采用 Client-Server (CS) 架构：
+* **服务器 (Server)**: 负责消息路由、用户管理和数据广播。
+```bash
+python server.py
 ```
 
-
-* **访客模式 (Guest)**: 连接到房主 IP 即可开始聊天。
+* **客户端 (Client)**: 用户界面，连接服务器进行聊天。支持 AI 辅助功能（需配置 API Key）。
 ```bash
-python main.py --guest --host-ip <HOST_IP> --port 8888
-
+python main.py --server-ip <SERVER_IP>
 ```
-
-
+若未指定 `--server-ip`，启动时将提示输入。
 
 ---
 

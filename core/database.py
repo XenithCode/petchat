@@ -300,37 +300,19 @@ class Database:
         row = cursor.fetchone()
         return dict(row) if row else None
     
-    def get_or_create_conversation(self, peer_user_id: str, peer_name: str) -> Dict:
-        """Get existing P2P conversation with user, or create new one"""
-        cursor = self.conn.cursor()
-        # Try to find existing P2P conversation with this user
-        cursor.execute("""
-            SELECT * FROM conversations 
-            WHERE type = 'p2p' AND peer_user_id = ?
-        """, (peer_user_id,))
-        row = cursor.fetchone()
-        if row:
-            return dict(row)
-        
-        # Create new conversation
-        from core.models import generate_uuid
-        conv_id = generate_uuid()
-        now = datetime.now().isoformat()
-        cursor.execute("""
-            INSERT INTO conversations (id, type, name, peer_user_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (conv_id, "p2p", peer_name, peer_user_id, now, now))
-        self.conn.commit()
-        return {
-            "id": conv_id,
-            "type": "p2p",
-            "name": peer_name,
-            "peer_user_id": peer_user_id,
-            "created_at": now,
-            "updated_at": now,
-            "last_message": "",
-            "unread_count": 0
-        }
+    def get_or_create_conversation(self, conversation_id: str, conv_type: str = "p2p", name: str = "") -> Dict:
+        """
+        Get existing conversation or create new one.
+        For P2P: conversation_id is usually peer_user_id
+        """
+        conv = self.get_conversation(conversation_id)
+        if not conv:
+            # Create new
+            peer_id = conversation_id if conv_type == "p2p" else None
+            self.create_conversation(conversation_id, conv_type, name, peer_id)
+            conv = self.get_conversation(conversation_id)
+            
+        return conv
     
     def get_conversations(self) -> List[Dict]:
         """Get all conversations ordered by last update"""

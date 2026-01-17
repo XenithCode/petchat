@@ -15,7 +15,7 @@ pip install pyinstaller
 pyinstaller build.spec
 
 # 方法2：使用命令行
-pyinstaller --name=pet-chat --onefile --windowed --add-data="config;config" main.py
+python -m PyInstaller --name=pet-chat --onefile --windowed main.py
 
 # 方法3：使用构建脚本
 python build_exe.py pyinstaller
