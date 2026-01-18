@@ -24,17 +24,12 @@ class MemoryViewer(QWidget):
         
         header_layout = QHBoxLayout()
         title_label = QLabel("🧠 对话记忆")
-        title_label.setStyleSheet(
-            f"font-weight: bold; font-size: 15px; color: {Theme.TEXT_PRIMARY};"
-        )
+        title_label.setProperty("role", "panel_title")
         header_layout.addWidget(title_label)
         header_layout.addStretch()
         
         clear_btn = QPushButton("清空记忆")
-        clear_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {Theme.ERROR}; color: {Theme.PRIMARY_TEXT};"
-            f" border: none; border-radius: {Theme.RADIUS_SM}px; padding: 5px 15px; font-size: 11px; }}"
-        )
+        clear_btn.setProperty("role", "danger_button")
         clear_btn.clicked.connect(self._on_clear_requested)
         header_layout.addWidget(clear_btn)
         
@@ -42,12 +37,14 @@ class MemoryViewer(QWidget):
         
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet(
-            f"QScrollArea {{ border: 1px solid {Theme.BG_BORDER}; border-radius: {Theme.RADIUS_MD}px;"
-            f" background-color: {Theme.BG_MUTED}; }}"
-        )
+        scroll_area.setProperty("role", "panel_scroll")
+        # Disable static contents to prevent ghosting/trailing artifacts when overlays move over
+        scroll_area.viewport().setAttribute(Qt.WidgetAttribute.WA_StaticContents, False)
         
         self.memory_container = QWidget()
+        self.memory_container.setObjectName("memory_container")
+        # NOTE: Removed WA_TranslucentBackground - was causing ghosting/smearing artifacts
+        # when dragging widgets over this area. A solid background is needed for proper repaint.
         self.memory_layout = QVBoxLayout()
         self.memory_container.setLayout(self.memory_layout)
         scroll_area.setWidget(self.memory_container)
@@ -56,16 +53,12 @@ class MemoryViewer(QWidget):
         
         self.empty_label = QLabel("暂无记忆\n对话中的关键信息将自动提取并显示在这里")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; padding: 20px;"
-        )
+        self.empty_label.setProperty("role", "empty_text")
         self.memory_layout.addWidget(self.empty_label)
         self.memory_layout.addStretch()
         
         self.setLayout(layout)
-        self.setStyleSheet(
-            f"QWidget {{ background-color: {Theme.BG_MAIN}; padding: 10px; }}"
-        )
+        self.setObjectName("memory_viewer")
     
     def update_memories(self, memories: List[Dict]):
         """Update displayed memories"""
@@ -83,9 +76,7 @@ class MemoryViewer(QWidget):
         if not self.memories:
             self.empty_label = QLabel("暂无记忆\n对话中的关键信息将自动提取并显示在这里")
             self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.empty_label.setStyleSheet(
-                f"color: {Theme.TEXT_SECONDARY}; padding: 20px;"
-            )
+            self.empty_label.setProperty("role", "empty_text")
             self.memory_layout.addWidget(self.empty_label)
         else:
             # Hide empty label if exists
@@ -101,48 +92,34 @@ class MemoryViewer(QWidget):
     
     def _create_memory_card(self, memory: Dict) -> QWidget:
         """Create a memory card widget"""
-        card = QFrame()
-        card.setFrameShape(QFrame.Shape.StyledPanel)
-        card.setStyleSheet(
-            f"QFrame {{ background-color: {Theme.BG_MUTED}; border: 1px solid {Theme.BG_BORDER};"
-            f" border-radius: {Theme.RADIUS_MD}px; padding: 10px; margin: 5px 0px; }}"
-        )
+        card = QWidget()
+        card.setProperty("role", "card")
         
         layout = QVBoxLayout()
         layout.setSpacing(5)
         
         category = memory.get('category', 'unknown')
-        category_colors = {
-            'event': Theme.PRIMARY,
-            'agreement': Theme.SUCCESS,
-            'topic': Theme.ACCENT,
-            'unknown': Theme.TEXT_DISABLED
-        }
-        color = category_colors.get(category, '#95a5a6')
+        # Map categories to colors via property if possible, but for now we set inline style 
+        # ONLY for the category badge mainly because of the dynamic nature of categories.
+        # Alternatively, we can use qproperty-category and style in CSS.
+        # Let's use property for category badge
         
         category_label = QLabel(f"📌 {category}")
-        category_label.setStyleSheet(
-            f"color: {color}; font-weight: bold; font-size: 11px; padding: 2px 8px;"
-            f" background-color: {color}33; border-radius: 3px;"
-        )
+        category_label.setProperty("role", "category_badge")
+        category_label.setProperty("category", category)
         layout.addWidget(category_label)
         
         content_text = QTextEdit()
         content_text.setPlainText(memory.get('content', ''))
         content_text.setReadOnly(True)
         content_text.setMaximumHeight(80)
-        content_text.setStyleSheet(
-            f"QTextEdit {{ border: none; background-color: transparent; font-size: 14px;"
-            f" color: {Theme.TEXT_PRIMARY}; }}"
-        )
+        content_text.setProperty("role", "card_content")
         layout.addWidget(content_text)
         
         # Timestamp
         if 'created_at' in memory:
             timestamp_label = QLabel(f"记录时间: {memory['created_at'][:19]}")
-            timestamp_label.setStyleSheet(
-                f"color: {Theme.TEXT_SECONDARY}; font-size: 10px;"
-            )
+            timestamp_label.setProperty("role", "timestamp")
             layout.addWidget(timestamp_label)
         
         card.setLayout(layout)

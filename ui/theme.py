@@ -4,6 +4,35 @@ UI Theme definitions complying with WCAG 2.1 AA and Modern UI standards.
 from PyQt6.QtGui import QColor
 
 
+class ThemeManager:
+    """Manages theme switching and current theme state"""
+    _current_theme = "light"
+    _zoom_level = 100  # Percentage
+    
+    @classmethod
+    def get_current_theme(cls):
+        return cls._current_theme
+    
+    @classmethod
+    def set_theme(cls, theme_name: str):
+        cls._current_theme = theme_name
+    
+    @classmethod
+    def get_zoom_level(cls):
+        return cls._zoom_level
+    
+    @classmethod
+    def set_zoom_level(cls, level: int):
+        cls._zoom_level = max(50, min(200, level))
+    
+    @classmethod
+    def get_theme_class(cls):
+        """Returns the appropriate theme class based on current theme"""
+        if cls._current_theme == "dark":
+            return DarkTheme
+        return Theme
+
+
 class Theme:
     """Application Theme Colors and Metrics"""
 
@@ -29,6 +58,11 @@ class Theme:
     TEXT_SECONDARY = "#49454F"
     TEXT_DISABLED = "#9E9E9E"
 
+    # Suggestion Module Colors
+    SUGGESTION_BG = "#F5F7FA"
+    SUGGESTION_TEXT = "#1E293B"
+    SUGGESTION_SHADOW_COLOR = (0, 0, 0, 13) # 0.05 alpha
+
     SUCCESS = "#469F66"       # M3 Green
     WARNING = "#E5B94E"       # M3 Yellow/Amber
     ERROR = "#BA1A1A"         # M3 Red
@@ -48,136 +82,163 @@ class Theme:
     FONT_SIZE_LG = 16
     FONT_SIZE_XL = 20
 
-    @staticmethod
-    @staticmethod
-    @staticmethod
-    def get_stylesheet():
+    @classmethod
+    def get_stylesheet(cls):
+        # Calculate scaled sizes based on zoom level
+        zoom = ThemeManager.get_zoom_level() / 100.0
+        
+        radius_sm = int(cls.RADIUS_SM * zoom)
+        radius_md = int(cls.RADIUS_MD * zoom)
+        
+        fs_sm = int(cls.FONT_SIZE_SM * zoom)
+        fs_md = int(cls.FONT_SIZE_MD * zoom)
+        
+        # Helper for 3D colors
+        def darker(hex_color, factor=120):
+            c = QColor(hex_color)
+            return c.darker(factor).name()
+
+        primary_shadow = darker(cls.PRIMARY)
+        primary_hover_shadow = darker(cls.PRIMARY_HOVER)
+        error_shadow = darker(cls.ERROR)
+        
         return f"""
             /* Global Reset & Base Defaults */
             QMainWindow {{
-                background-color: {Theme.BG_MAIN};
+                background-color: {cls.BG_MAIN};
             }}
             QDialog {{
-                background-color: {Theme.BG_MAIN};
+                background-color: {cls.BG_MAIN};
             }}
             QWidget#central, QWidget#sidebar {{
-                background-color: {Theme.BG_MAIN};
+                background-color: {cls.BG_MAIN};
             }}
 
             /* Typography & Colors */
             QLabel {{
-                color: {Theme.TEXT_PRIMARY};
+                color: {cls.TEXT_PRIMARY};
                 font-family: 'Segoe UI', 'Microsoft YaHei', 'Roboto', sans-serif;
             }}
             
-            /* Splitter - Make handle distinct but not ugly black */
+            /* Splitter */
             QSplitter::handle {{
-                background-color: {Theme.BG_BORDER};
-                width: 1px; /* Thin separator line */
+                background-color: {cls.BG_BORDER};
+                width: 1px;
             }}
 
             /* Menu Bar & Menus */
             QMenuBar {{
-                background-color: {Theme.BG_ELEVATED};
-                color: {Theme.TEXT_PRIMARY};
-                border-bottom: 1px solid {Theme.BG_BORDER};
+                background-color: {cls.BG_ELEVATED};
+                color: {cls.TEXT_PRIMARY};
+                border-bottom: 1px solid {cls.BG_BORDER};
                 padding: 4px;
             }}
             QMenuBar::item {{
                 padding: 6px 12px;
                 background: transparent;
-                border-radius: {Theme.RADIUS_SM}px;
+                border-radius: {radius_sm}px;
                 margin: 0 4px;
-                color: {Theme.TEXT_PRIMARY};
+                color: {cls.TEXT_PRIMARY};
             }}
             QMenuBar::item:selected {{
-                background-color: {Theme.BG_HOVER};
+                background-color: {cls.BG_HOVER};
             }}
 
             QMenu {{
-                background-color: {Theme.BG_ELEVATED};
-                color: {Theme.TEXT_PRIMARY};
-                border: 1px solid {Theme.BG_BORDER};
-                border-radius: {Theme.RADIUS_MD}px;
+                background-color: {cls.BG_ELEVATED};
+                color: {cls.TEXT_PRIMARY};
+                border: 1px solid {cls.BG_BORDER};
+                border-radius: {radius_md}px;
                 padding: 4px;
             }}
             QMenu::item {{
                 padding: 8px 24px 8px 12px;
-                border-radius: {Theme.RADIUS_SM}px;
+                border-radius: {radius_sm}px;
                 margin: 0 4px;
+                color: {cls.TEXT_PRIMARY};
             }}
             QMenu::item:selected {{
-                background-color: {Theme.BG_HOVER};
-                color: {Theme.TEXT_PRIMARY};
+                background-color: {cls.BG_HOVER};
+                color: {cls.TEXT_PRIMARY};
             }}
             QMenu::separator {{
                 height: 1px;
-                background: {Theme.BG_BORDER};
+                background: {cls.BG_BORDER};
                 margin: 4px 0;
             }}
 
-            /* Buttons */
+            /* Buttons - 3D Style */
             QPushButton {{
-                background-color: {Theme.PRIMARY};
-                color: {Theme.PRIMARY_TEXT};
-                border: none;
-                border-radius: 20px;
-                padding: 8px 24px;
-                font-size: {Theme.FONT_SIZE_MD}px;
+                background-color: {cls.PRIMARY};
+                color: {cls.PRIMARY_TEXT};
+                border: 1px solid {primary_shadow};
+                border-bottom: 4px solid {primary_shadow};
+                border-radius: 10px;
+                padding: 6px 24px 10px 24px;
+                font-size: {fs_md}px;
                 font-weight: 600;
                 font-family: 'Segoe UI', sans-serif;
             }}
             QPushButton:hover {{
-                background-color: {Theme.PRIMARY_HOVER};
+                background-color: {cls.PRIMARY_HOVER};
+                border-bottom-color: {primary_hover_shadow};
+                margin-top: 1px;
+                border-bottom-width: 3px;
+                padding-bottom: 9px;
             }}
             QPushButton:pressed {{
-                background-color: {Theme.PRIMARY};
-                padding-top: 9px;
+                background-color: {cls.PRIMARY};
+                border-bottom-width: 0px;
+                margin-top: 4px;
+                padding-top: 10px;
+                padding-bottom: 6px;
             }}
             QPushButton:disabled {{
-                background-color: {Theme.BG_BORDER};
-                color: {Theme.TEXT_DISABLED};
+                background-color: {cls.BG_BORDER};
+                border-color: {cls.TEXT_DISABLED};
+                color: {cls.TEXT_DISABLED};
+                border-bottom: 4px solid {cls.TEXT_DISABLED};
             }}
 
             /* Inputs */
             QLineEdit, QTextEdit, QComboBox {{
-                background-color: {Theme.BG_SURFACE};
-                border: 1px solid {Theme.BG_BORDER};
-                border-radius: {Theme.RADIUS_MD}px;
+                background-color: {cls.BG_SURFACE};
+                border: 1px solid {cls.BG_BORDER};
+                border-radius: {radius_md}px;
                 padding: 10px 12px;
-                font-size: {Theme.FONT_SIZE_MD}px;
-                color: {Theme.TEXT_PRIMARY};
-                selection-background-color: {Theme.PRIMARY};
-                selection-color: {Theme.PRIMARY_TEXT};
+                font-size: {fs_md}px;
+                color: {cls.TEXT_PRIMARY};
+                selection-background-color: {cls.PRIMARY};
+                selection-color: {cls.PRIMARY_TEXT};
             }}
             QLineEdit:focus, QTextEdit:focus, QComboBox:focus {{
-                border: 2px solid {Theme.PRIMARY};
-                background-color: {Theme.BG_MAIN};
+                border: 2px solid {cls.PRIMARY};
+                background-color: {cls.BG_MAIN};
             }}
             QLineEdit::placeholder, QTextEdit::placeholder {{
-                color: {Theme.TEXT_SECONDARY};
+                color: {cls.TEXT_SECONDARY};
             }}
 
             /* Tabs */
             QTabWidget::pane {{
                 border: none;
-                background: {Theme.BG_MAIN};
+                background: {cls.BG_MAIN};
             }}
             QTabBar::tab {{
                 background: transparent;
-                color: {Theme.TEXT_SECONDARY};
+                color: {cls.TEXT_SECONDARY};
                 padding: 10px 16px;
                 margin: 0 4px;
                 border-bottom: 2px solid transparent;
                 font-weight: 500;
             }}
             QTabBar::tab:selected {{
-                color: {Theme.PRIMARY};
-                border-bottom: 2px solid {Theme.PRIMARY};
+                color: {cls.PRIMARY};
+                border-bottom: 2px solid {cls.PRIMARY};
             }}
             QTabBar::tab:hover:!selected {{
-                background-color: {Theme.BG_HOVER};
-                border-radius: {Theme.RADIUS_SM}px;
+                background-color: {cls.BG_HOVER};
+                border-radius: {radius_sm}px;
             }}
 
             /* Lists */
@@ -199,29 +260,35 @@ class Theme:
                 background-color: transparent;
             }}
 
+            QLabel[msg_type="timestamp"] {{
+                color: {cls.TEXT_SECONDARY};
+                font-size: {fs_sm}px;
+                background: transparent;
+            }}
+            
             /* Checkbox & Radio */
             QRadioButton, QCheckBox {{
                 spacing: 8px;
-                color: {Theme.TEXT_PRIMARY};
+                color: {cls.TEXT_PRIMARY};
             }}
             QRadioButton::indicator, QCheckBox::indicator {{
                 width: 18px;
                 height: 18px;
-                border: 2px solid {Theme.SECONDARY};
-                background: {Theme.BG_MAIN};
+                border: 2px solid {cls.SECONDARY};
+                background: {cls.BG_MAIN};
                 border-radius: 4px;
             }}
             QRadioButton::indicator {{
                 border-radius: 10px;
             }}
             QRadioButton::indicator:checked {{
-                background-color: {Theme.PRIMARY};
-                border: 4px solid {Theme.BG_MAIN}; 
-                outline: 1px solid {Theme.PRIMARY}; 
+                background-color: {cls.PRIMARY};
+                border: 4px solid {cls.BG_MAIN}; 
+                outline: 1px solid {cls.PRIMARY}; 
             }}
             QCheckBox::indicator:checked {{
-                background-color: {Theme.PRIMARY};
-                border: 2px solid {Theme.PRIMARY};
+                background-color: {cls.PRIMARY};
+                border: 2px solid {cls.PRIMARY};
             }}
 
             /* Scrollbars */
@@ -232,12 +299,12 @@ class Theme:
                 margin: 0;
             }}
             QScrollBar::handle:vertical {{
-                background: {Theme.BG_BORDER};
+                background: {cls.BG_BORDER};
                 min-height: 24px;
                 border-radius: 4px;
             }}
             QScrollBar::handle:vertical:hover {{
-                background: {Theme.TEXT_DISABLED};
+                background: {cls.TEXT_DISABLED};
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
@@ -245,4 +312,252 @@ class Theme:
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
             }}
+            
+            /* === Suggestion & Memory Panels === */
+            QWidget#suggestion_panel {{
+                background-color: {cls.SUGGESTION_BG};
+            }}
+            QWidget#memory_viewer {{
+                background-color: {cls.BG_MAIN};
+            }}
+            
+            QLabel[role="panel_title"] {{
+                font-weight: bold;
+                font-size: {fs_md + 2}px;
+                color: {cls.TEXT_PRIMARY};
+            }}
+            /* Specific override for suggestion panel title */
+            QWidget#suggestion_panel QLabel[role="panel_title"] {{
+                color: {cls.SUGGESTION_TEXT};
+            }}
+
+            QScrollArea[role="panel_scroll"] {{
+                border: 1px solid {cls.BG_BORDER};
+                border-radius: {radius_md}px;
+                background-color: {cls.SUGGESTION_BG};
+            }}
+            /* Force solid background on scroll area viewports to prevent ghosting */
+            QScrollArea[role="panel_scroll"] > QWidget > QWidget {{
+                background-color: {cls.BG_MAIN};
+            }}
+            
+            /* Target the widget inside ScrollArea - MUST have solid background for repaint */
+            QWidget#suggestion_container {{
+                background-color: {cls.SUGGESTION_BG};
+            }}
+            QWidget#memory_container {{
+                background-color: {cls.BG_MAIN};
+            }}
+
+            QWidget[role="card"], QFrame[role="card"] {{
+                background-color: {cls.SUGGESTION_BG};
+                color: {cls.SUGGESTION_TEXT};
+                border: 1px solid {cls.BG_BORDER};
+                border-radius: {radius_sm}px;
+            }}
+            QLabel[role="card_title"] {{
+                font-weight: bold;
+                font-size: {fs_md}px;
+                color: {cls.SUGGESTION_TEXT};
+            }}
+            QTextEdit[role="card_content"] {{
+                border: 1px solid {cls.BG_BORDER};
+                border-radius: {radius_sm}px;
+                background-color: {cls.SUGGESTION_BG};
+                color: {cls.SUGGESTION_TEXT};
+                font-size: {fs_md}px;
+            }}
+            QPushButton[role="action_button"] {{
+                background-color: {cls.PRIMARY};
+                color: {cls.PRIMARY_TEXT};
+                border: 1px solid {primary_shadow};
+                border-bottom: 3px solid {primary_shadow};
+                border-radius: {radius_sm}px;
+                padding: 4px 12px 6px 12px;
+                font-weight: bold;
+            }}
+            QPushButton[role="action_button"]:hover {{
+                background-color: {cls.PRIMARY_HOVER};
+                border-bottom-color: {primary_hover_shadow};
+                margin-top: 1px;
+                border-bottom-width: 2px;
+                padding-bottom: 5px;
+            }}
+            QPushButton[role="action_button"]:pressed {{
+                border-bottom-width: 0px;
+                margin-top: 3px;
+                padding-top: 7px;
+                padding-bottom: 3px;
+            }}
+            
+            QPushButton[role="danger_button"] {{
+                background-color: {cls.ERROR};
+                color: {cls.PRIMARY_TEXT};
+                border: 1px solid {error_shadow};
+                border-bottom: 3px solid {error_shadow};
+                border-radius: {radius_sm}px;
+                padding: 3px 12px 5px 12px;
+                font-size: {fs_md - 2}px;
+            }}
+            QPushButton[role="danger_button"]:pressed {{
+                border-bottom-width: 0px;
+                margin-top: 3px;
+                padding-top: 6px;
+                padding-bottom: 2px;
+            }}
+            QLabel[role="loading_text"], QLabel[role="empty_text"], QLabel[role="timestamp"] {{
+                color: {cls.TEXT_SECONDARY};
+            }}
+            
+            /* Category Badges */
+            QLabel[role="category_badge"] {{
+                font-weight: bold; 
+                font-size: {fs_md - 2}px;
+                padding: 2px 8px;
+                border-radius: 3px;
+                color: {cls.TEXT_DISABLED}; /* Default */
+                background-color: rgba(150, 150, 150, 0.2);
+            }}
+            QLabel[category="event"] {{ color: {cls.PRIMARY}; background-color: {cls.PRIMARY}33; }}
+            QLabel[category="agreement"] {{ color: {cls.SUCCESS}; background-color: {cls.SUCCESS}33; }}
+            QLabel[category="topic"] {{ color: {cls.ACCENT}; background-color: {cls.ACCENT}33; }}
+            
+            /* === Avatar === */
+            /* Ensure avatar text is always visible on pastel backgrounds */
+            QLabel[role="avatar"] {{
+                color: #000000;
+                font-weight: bold;
+                border: 2px solid {cls.BG_MAIN};
+            }}
+
+            /* --- Specific Widget Styling --- */
+            
+            /* Sidebar */
+            QWidget#sidebar {{
+                background-color: {cls.BG_ELEVATED};
+                border-right: 1px solid {cls.BG_BORDER};
+            }}
+            
+            /* Chat Area */
+            QWidget#chat_container {{
+                background-color: {cls.BG_MAIN}; 
+                /* Note: Gradients are tricky in global stylesheet if dynamic, 
+                   but we can fallback to flat color or handle gradient in code if needed for specific themes.
+                   For now using flat BG to ensure dark mode works reliably. */
+            }}
+            
+            /* Message Input area */
+            QWidget#input_container {{
+                background-color: {cls.BG_MAIN};
+                border-top: 1px solid {cls.BG_BORDER};
+            }}
+            
+            /* Message Input area */
+            QWidget#input_container {{
+                background-color: {cls.BG_MAIN};
+                border-top: 1px solid {cls.BG_BORDER};
+            }}
+            
+            /* Sidebar Lists */
+            QListWidget#room_list::item, QListWidget#user_list::item {{
+                padding: 10px 16px;
+                border-radius: {radius_md}px;
+                color: {cls.TEXT_PRIMARY};
+            }}
+            QListWidget#room_list::item:selected, QListWidget#user_list::item:selected {{
+                background-color: {cls.BG_SELECTED};
+                color: {cls.TEXT_PRIMARY};
+                font-weight: 600;
+            }}
+            QListWidget#room_list::item:hover:!selected, QListWidget#user_list::item:hover:!selected {{
+                background-color: {cls.BG_HOVER};
+            }}
+            
+            /* Chat Bubbles */
+            QLabel[msg_type="me"] {{
+                background-color: {cls.PRIMARY};
+                color: {cls.PRIMARY_TEXT};
+                border-radius: 12px;
+                padding: 10px 14px;
+            }}
+            
+            QLabel[msg_type="other"] {{
+                background-color: {cls.BG_SURFACE};
+                color: {cls.TEXT_PRIMARY};
+                border-radius: 12px;
+                padding: 10px 14px;
+                border: 1px solid {cls.BG_BORDER};
+            }}
+            
+            QLabel[msg_type="time"] {{
+                color: {cls.TEXT_SECONDARY};
+                font-size: {fs_sm}px;
+                padding: 4px 12px;
+                border-radius: {radius_sm}px;
+                background-color: {cls.BG_MUTED};
+            }}
+            
+            QLabel[msg_type="sender_name"] {{
+                color: {cls.TEXT_SECONDARY};
+                font-size: {fs_sm}px;
+                font-weight: bold;
+                background: transparent;
+            }}
+            
+            QLabel[msg_type="empty_state"] {{
+                color: {cls.TEXT_DISABLED};
+                font-size: 16px;
+                font-weight: bold;
+                background: transparent;
+            }}
+
+            /* Headers */
+            QLabel[header="true"] {{
+                color: {cls.TEXT_SECONDARY};
+                font-size: {fs_sm}px;
+                font-weight: 600;
+            }}
+            
+            /* Status Bar */
+            QStatusBar {{
+                background-color: {cls.BG_MUTED};
+                border-top: 1px solid {cls.BG_BORDER};
+                color: {cls.TEXT_SECONDARY};
+            }}
         """
+
+
+class DarkTheme(Theme):
+    """Dark Mode Color Palette"""
+    
+    # Material Design 3 Dark Code Palette
+    PRIMARY = "#D0BCFF"       # M3 Light Purple
+    PRIMARY_HOVER = "#E8DEF8" 
+    PRIMARY_TEXT = "#381E72"  # Dark text on primary
+    
+    SECONDARY = "#CCC2DC"
+    ACCENT = "#EFB8C8"
+    
+    # Backgrounds - Dark Mode
+    BG_MAIN = "#141218"       # Very dark (almost black)
+    BG_ELEVATED = "#1D1B20"   # Surface 1
+    BG_SURFACE = "#2B2930"    # Surface 2
+    BG_MUTED = "#211F26"
+    BG_BORDER = "#49454F"     # Dark outline
+    BG_HOVER = "#332F37"
+    BG_SELECTED = "#4A4458"
+    
+    # Text Colors
+    TEXT_PRIMARY = "#E6E1E5"
+    TEXT_SECONDARY = "#CAC4D0"
+    TEXT_DISABLED = "#979797"
+
+    # Suggestion Module Colors
+    SUGGESTION_BG = "#1E293B"
+    SUGGESTION_TEXT = "#F5F7FA"
+    SUGGESTION_SHADOW_COLOR = (0, 0, 0, 51) # 0.2 alpha
+    
+    SUCCESS = "#8CD69D"
+    WARNING = "#DCC486"
+    ERROR = "#F2B8B5"
+

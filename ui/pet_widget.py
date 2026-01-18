@@ -1,6 +1,6 @@
 """Pet widget for displaying emotion state with animations - Floating Overlay Version"""
 from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout
-from PyQt6.QtCore import Qt, QTimer, QPoint
+from PyQt6.QtCore import Qt, QTimer, QPoint, QRect
 from PyQt6.QtGui import QMouseEvent
 from typing import Dict, Optional
 from ui.theme import Theme
@@ -45,7 +45,10 @@ class PetWidget(QWidget):
         """Initialize UI components"""
         # Enable transparent background
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        # Prevent Qt from auto-filling background - essential for preventing ghost images
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        # Note: Removed FramelessWindowHint - it causes visual artifacts (trailing pet icons)
+        # when dragging the pet over other widgets. As a child widget, this flag is not needed.
         
         # Set fixed size for the floating pet
         self.setFixedSize(160, 180)
@@ -159,6 +162,9 @@ class PetWidget(QWidget):
     def mouseMoveEvent(self, event: QMouseEvent):
         """Handle mouse move for dragging"""
         if self._is_dragging and self._drag_position is not None:
+            # Save old geometry for repaint
+            old_geometry = self.geometry()
+            
             new_pos = event.globalPosition().toPoint() - self._drag_position
             
             # Constrain to parent widget bounds
@@ -172,6 +178,14 @@ class PetWidget(QWidget):
                     new_pos.setY(max(0, min(new_pos.y(), max_y)))
             
             self.move(new_pos)
+            
+            # Repaint BOTH old and new regions on parent to clear any artifacts
+            if self.parent() and hasattr(self.parent(), 'update'):
+                # Repaint old position (where ghost image would remain)
+                self.parent().update(old_geometry)
+                # Repaint new position
+                self.parent().update(self.geometry())
+                
             event.accept()
         else:
             super().mouseMoveEvent(event)

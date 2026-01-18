@@ -3,7 +3,8 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLineEdit, QPushButton, QSplitter,
                              QLabel, QScrollArea, QMessageBox, QMenuBar, QMenu,
                              QTabWidget, QListWidget, QListWidgetItem, QFrame,
-                             QInputDialog)
+                             QInputDialog, QStackedLayout, QFileDialog, QDialog,
+                             QDialogButtonBox, QFormLayout, QApplication)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor, QAction
 from datetime import datetime
@@ -13,7 +14,7 @@ import json
 from ui.pet_widget import PetWidget
 from ui.suggestion_panel import SuggestionPanel
 from ui.memory_viewer import MemoryViewer
-from ui.theme import Theme
+from ui.theme import Theme, ThemeManager
 # Note: APIConfigDialog removed - API config now handled by server
 
 
@@ -61,16 +62,14 @@ class MainWindow(QMainWindow):
         
         sidebar_widget = QWidget()
         sidebar_widget.setObjectName("sidebar")
-        sidebar_widget.setStyleSheet(f"#sidebar {{ background-color: {Theme.BG_ELEVATED}; border-right: 1px solid {Theme.BG_BORDER}; }}")
+        
         sidebar_layout = QVBoxLayout()
         sidebar_layout.setSpacing(8)
         sidebar_layout.setContentsMargins(0, 0, 8, 0)
         
         room_header_layout = QHBoxLayout()
         room_label = QLabel("会话列表")
-        room_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px; font-weight: 600;"
-        )
+        room_label.setProperty("header", "true")
         room_header_layout.addWidget(room_label)
         room_header_layout.addStretch()
         self.new_group_button = QPushButton("新建群聊")
@@ -81,27 +80,16 @@ class MainWindow(QMainWindow):
         sidebar_layout.addLayout(room_header_layout)
         
         self.room_list = QListWidget()
-        self.room_list.setStyleSheet(
-            f"QListWidget {{ background-color: transparent; border: none; outline: none; color: {Theme.TEXT_PRIMARY}; }}"
-            f"QListWidget::item {{ padding: 10px 16px; border-radius: {Theme.RADIUS_MD}px; color: {Theme.TEXT_PRIMARY}; }}"
-            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; color: {Theme.TEXT_PRIMARY}; font-weight: 600; }}"
-            f"QListWidget::item:hover:!selected {{ background-color: {Theme.BG_HOVER}; }}"
-        )
+        self.room_list.setObjectName("room_list")
         self.room_list.itemSelectionChanged.connect(self._on_room_selected)
         sidebar_layout.addWidget(self.room_list)
         
         user_label = QLabel("在线用户")
-        user_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: {Theme.FONT_SIZE_SM}px; font-weight: 600;"
-        )
+        user_label.setProperty("header", "true")
         sidebar_layout.addWidget(user_label)
         
         self.user_list = QListWidget()
-        self.user_list.setStyleSheet(
-            f"QListWidget {{ background-color: transparent; border: none; outline: none; color: {Theme.TEXT_PRIMARY}; }}"
-            f"QListWidget::item {{ padding: 8px 16px; border-radius: {Theme.RADIUS_MD}px; color: {Theme.TEXT_PRIMARY}; }}"
-            f"QListWidget::item:selected {{ background-color: {Theme.BG_SELECTED}; color: {Theme.TEXT_PRIMARY}; font-weight: 600; }}"
-        )
+        self.user_list.setObjectName("user_list")
         self.user_list.itemSelectionChanged.connect(self._on_user_selected)
         sidebar_layout.addWidget(self.user_list)
         
@@ -113,28 +101,51 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout()
         left_layout.setSpacing(10)
         
-        # PetWidget is now a floating overlay, not added to layout
-        
+        # Chat Container
         chat_container = QWidget()
-        chat_layout = QVBoxLayout()
-        chat_layout.setSpacing(8)
-
-
+        chat_container.setObjectName("chat_container")
         
+        chat_layout = QVBoxLayout()
+        chat_layout.setSpacing(0)
+        chat_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Message Area with Stacked Layout for Empty State
+        self.message_area_widget = QWidget()
+        self.message_area_layout = QStackedLayout()
+        self.message_area_widget.setLayout(self.message_area_layout)
+        
+        # 1. Empty State Widget
+        empty_widget = QWidget()
+        empty_layout = QVBoxLayout()
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state_label = QLabel("👋\n暂无消息\n开始一段新的对话吧")
+        self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state_label.setProperty("msg_type", "empty_state")
+        empty_layout.addWidget(self.empty_state_label)
+        empty_widget.setLayout(empty_layout)
+        self.message_area_layout.addWidget(empty_widget)
+        
+        # 2. Message List
         self.message_display = QListWidget()
+        self.message_display.setObjectName("message_display")
         self.message_display.setFrameShape(QFrame.Shape.NoFrame)
         self.message_display.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.message_display.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.message_display.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self.message_display.setStyleSheet(
-            f"QListWidget {{ background-color: {Theme.BG_MAIN}; border: none; }}"
-        )
-        chat_layout.addWidget(self.message_display)
+        self.message_area_layout.addWidget(self.message_display)
         
+        # Default to showing empty state if no messages
+        self.message_area_layout.setCurrentWidget(empty_widget)
+        
+        chat_layout.addWidget(self.message_area_widget)
+
         input_container = QWidget()
+        input_container.setObjectName("input_container")
+        
         input_layout = QHBoxLayout()
-        input_layout.setContentsMargins(0, 0, 0, 0)
-        input_layout.setSpacing(8)
+        input_layout.setContentsMargins(20, 15, 20, 15)
+        input_layout.setSpacing(10)
+        
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText("输入消息... (输入 /ai 请求AI建议)")
         self.message_input.returnPressed.connect(self._send_message)
@@ -142,10 +153,11 @@ class MainWindow(QMainWindow):
         input_layout.addWidget(self.message_input)
         
         self.send_button = QPushButton("发送")
+        self.send_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.send_button.clicked.connect(self._send_message)
         input_layout.addWidget(self.send_button)
         input_container.setLayout(input_layout)
-        
+
         chat_layout.addWidget(input_container)
         chat_container.setLayout(chat_layout)
         
@@ -177,41 +189,153 @@ class MainWindow(QMainWindow):
         self._init_floating_pet()
         
         self.statusBar().showMessage(f"已连接 - {self.user_name}")
-        self.statusBar().setStyleSheet(
-            f"QStatusBar {{ background-color: {Theme.BG_MUTED}; border-top: 1px solid {Theme.BG_BORDER}; color: {Theme.TEXT_SECONDARY}; }}"
-        )
+        
+        # Apply initial styles
+        self._update_styles()
     
     def _create_menu_bar(self):
-        """Create menu bar"""
+        """Create professional menu bar with keyboard shortcuts and status tips"""
         menubar = self.menuBar()
         
+        # =========== File Menu (文件) ===========
         file_menu = menubar.addMenu("文件")
+        
+        # Export History - with save icon
+        self.export_history_action = QAction("📁 导出聊天记录", self)
+        self.export_history_action.setShortcut("Ctrl+S")
+        self.export_history_action.setStatusTip("将当前会话的聊天记录导出为文件")
+        self.export_history_action.triggered.connect(self._on_export_history)
+        file_menu.addAction(self.export_history_action)
+        
+        file_menu.addSeparator()
+        
+        # Close Window - minimize to tray
+        self.close_window_action = QAction("关闭窗口", self)
+        self.close_window_action.setShortcut("Ctrl+W")
+        self.close_window_action.setStatusTip("最小化窗口到系统托盘")
+        self.close_window_action.triggered.connect(self._on_close_to_tray)
+        file_menu.addAction(self.close_window_action)
+        
+        # Exit application
         exit_action = QAction("退出", self)
         exit_action.setShortcut("Ctrl+Q")
+        exit_action.setStatusTip("完全退出应用程序")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
-        self.settings_menu = menubar.addMenu("设置")
-        # Note: "AI 配置" menu removed - API Key now configured on server
-        
-        # Add Reset User action
-        reset_user_action = QAction("🔄 重置用户数据", self)
-        reset_user_action.triggered.connect(self._on_reset_user_requested)
-        self.settings_menu.addAction(reset_user_action)
-        
-        
+        # =========== View Menu (视图) ===========
         view_menu = menubar.addMenu("视图")
         
-        memories_action = QAction("查看记忆", self)
+        # Theme submenu
+        theme_menu = QMenu("🎨 主题", self)
+        theme_menu.setStatusTip("切换应用程序主题")
+        
+        self.light_mode_action = QAction("浅色模式", self)
+        self.light_mode_action.setCheckable(True)
+        self.light_mode_action.setChecked(True)  # Default
+        self.light_mode_action.setStatusTip("切换到浅色主题")
+        self.light_mode_action.triggered.connect(lambda: self._on_theme_changed("light"))
+        theme_menu.addAction(self.light_mode_action)
+        
+        self.dark_mode_action = QAction("深色模式", self)
+        self.dark_mode_action.setCheckable(True)
+        self.dark_mode_action.setStatusTip("切换到深色主题")
+        self.dark_mode_action.triggered.connect(lambda: self._on_theme_changed("dark"))
+        theme_menu.addAction(self.dark_mode_action)
+        
+        view_menu.addMenu(theme_menu)
+        
+        view_menu.addSeparator()
+        
+        # Toggle Sidebar
+        self.toggle_sidebar_action = QAction("切换侧边栏", self)
+        self.toggle_sidebar_action.setShortcut("Ctrl+B")
+        self.toggle_sidebar_action.setStatusTip("显示或隐藏左侧联系人列表")
+        self.toggle_sidebar_action.triggered.connect(self._on_toggle_sidebar)
+        view_menu.addAction(self.toggle_sidebar_action)
+        
+        view_menu.addSeparator()
+        
+        # Zoom In
+        self.zoom_in_action = QAction("放大", self)
+        self.zoom_in_action.setShortcut("Ctrl++")
+        self.zoom_in_action.setStatusTip("增大界面字体和元素大小")
+        self.zoom_in_action.triggered.connect(self._on_zoom_in)
+        view_menu.addAction(self.zoom_in_action)
+        
+        # Zoom Out
+        self.zoom_out_action = QAction("缩小", self)
+        self.zoom_out_action.setShortcut("Ctrl+-")
+        self.zoom_out_action.setStatusTip("减小界面字体和元素大小")
+        self.zoom_out_action.triggered.connect(self._on_zoom_out)
+        view_menu.addAction(self.zoom_out_action)
+        
+        view_menu.addSeparator()
+        
+        # View Memories (existing)
+        memories_action = QAction("🧠 查看记忆", self)
         memories_action.setShortcut("Ctrl+M")
+        memories_action.setStatusTip("查看AI提取的对话记忆")
         memories_action.triggered.connect(self._show_memories_tab)
         view_menu.addAction(memories_action)
         
+        # =========== Settings Menu (设置) ===========
+        self.settings_menu = menubar.addMenu("设置")
+        
+        # Preferences
+        self.preferences_action = QAction("⚙️ 偏好设置", self)
+        self.preferences_action.setShortcut("Ctrl+,")
+        self.preferences_action.setStatusTip("打开应用程序设置对话框")
+        self.preferences_action.triggered.connect(self._on_open_preferences)
+        self.settings_menu.addAction(self.preferences_action)
+        
+        self.settings_menu.addSeparator()
+        
+        # Notifications toggle
+        self.notifications_action = QAction("🔔 通知提醒", self)
+        self.notifications_action.setCheckable(True)
+        self.notifications_action.setChecked(True)  # Default on
+        self.notifications_action.setStatusTip("开启或关闭消息通知")
+        self.notifications_action.triggered.connect(self._on_toggle_notifications)
+        self.settings_menu.addAction(self.notifications_action)
+        
+        self.settings_menu.addSeparator()
+        
+        # Reset User action
+        reset_user_action = QAction("🔄 重置用户数据", self)
+        reset_user_action.setStatusTip("清除本地用户信息并重新生成用户ID")
+        reset_user_action.triggered.connect(self._on_reset_user_requested)
+        self.settings_menu.addAction(reset_user_action)
+        
+        # =========== Help Menu (帮助) ===========
         help_menu = menubar.addMenu("帮助")
         
+        # Keyboard Shortcuts
+        self.shortcuts_action = QAction("⌨️ 键盘快捷键", self)
+        self.shortcuts_action.setShortcut("Ctrl+/")
+        self.shortcuts_action.setStatusTip("显示所有可用的键盘快捷键")
+        self.shortcuts_action.triggered.connect(self._on_show_shortcuts)
+        help_menu.addAction(self.shortcuts_action)
+        
+        help_menu.addSeparator()
+        
+        # Check for Updates
+        self.check_updates_action = QAction("🔄 检查更新", self)
+        self.check_updates_action.setStatusTip("检查是否有新版本可用")
+        self.check_updates_action.triggered.connect(self._on_check_updates)
+        help_menu.addAction(self.check_updates_action)
+        
+        help_menu.addSeparator()
+        
+        # About (existing)
         about_action = QAction("关于", self)
+        about_action.setStatusTip("关于 pet-chat 应用程序")
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+        
+        # Store reference to sidebar for toggle
+        self._sidebar_visible = True
+        self._zoom_level = 100  # Percentage
 
     def _init_floating_pet(self):
         """Initialize the floating pet widget as an overlay"""
@@ -325,9 +449,18 @@ class MainWindow(QMainWindow):
         
         print(f"[DEBUG] Loaded {len(users)} online users to UI")
     
+    def _update_empty_state(self):
+        """Update empty state visibility"""
+        if self.message_history:
+            self.message_area_layout.setCurrentIndex(1) # Show list
+        else:
+            self.message_area_layout.setCurrentIndex(0) # Show empty state
+
     def clear_messages(self):
         self.message_history = []
         self.message_display.clear()
+        self._update_empty_state()
+
     
     def show_typing_status(self, sender_name: str, is_typing: bool):
         if is_typing:
@@ -344,6 +477,10 @@ class MainWindow(QMainWindow):
         """
         if timestamp is None:
             timestamp = datetime.now().strftime("%H:%M")
+        
+        # Ensure we show the list if we add a message
+        if not self.message_history:
+             self.message_area_layout.setCurrentIndex(1)
         
         # Auto-detect is_me if not provided (backward compatibility)
         if is_me is None:
@@ -402,10 +539,10 @@ class MainWindow(QMainWindow):
                 content = user_name[0].upper()
 
             lbl = QLabel(content)
+            lbl.setProperty("role", "avatar")
             lbl.setStyleSheet(
                 f"font-size: 20px; background: {bg_color}; border-radius: 20px; "
                 f"min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px;"
-                f"border: 2px solid #FFFFFF;" # Add white border for better contrast
             )
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             return lbl
@@ -424,23 +561,16 @@ class MainWindow(QMainWindow):
         text_label.setWordWrap(True)
         text_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         
-        # Explicit font setup
-        font = text_label.font()
-        font.setPointSize(10)
-        text_label.setFont(font)
-
+        # Explicit font setup if strict control needed, otherwise handled by Theme global font
+        # text_label.setFont(...) 
+        
         time_label = QLabel(timestamp)
-        time_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: 10px; background: transparent;"
-        )
+        time_label.setProperty("msg_type", "timestamp")
 
         # Styling based on is_me
         if is_me:
             # Self message
-            text_label.setStyleSheet(
-                f"background-color: {Theme.PRIMARY}; color: #FFFFFF;"
-                f" border-radius: 12px; padding: 10px 14px;"
-            )
+            text_label.setProperty("msg_type", "me")
             message_bubble.addWidget(text_label)
             message_bubble.addWidget(time_label, 0, Qt.AlignmentFlag.AlignRight)
             
@@ -458,19 +588,13 @@ class MainWindow(QMainWindow):
             
         else:
             # Other message
-            text_label.setStyleSheet(
-                f"background-color: #F2F2F2; color: #000000;"
-                f" border-radius: 12px; padding: 10px 14px;"
-                f" border: 1px solid {Theme.BG_BORDER};"
-            )
+            text_label.setProperty("msg_type", "other")
             message_bubble.addWidget(text_label)
             message_bubble.addWidget(time_label, 0, Qt.AlignmentFlag.AlignRight)
             
             # Username (only for others)
             username_label = QLabel(sender)
-            username_label.setStyleSheet(
-                f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; font-weight: bold; background: transparent; margin-bottom: 2px;"
-            )
+            username_label.setProperty("msg_type", "sender_name")
             content_container.addWidget(username_label)
             content_container.addLayout(message_bubble)
             
@@ -498,10 +622,7 @@ class MainWindow(QMainWindow):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         label = QLabel(timestamp)
-        label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; padding: 4px 12px;"
-            f" border-radius: {Theme.RADIUS_SM}px; background-color: {Theme.BG_MUTED};"
-        )
+        label.setProperty("msg_type", "time")
         layout.addWidget(label)
         separator_widget.setLayout(layout)
 
@@ -663,4 +784,171 @@ class MainWindow(QMainWindow):
             "• 对话记忆提取\n"
             "• AI 决策辅助\n\n"
         )
+    
+    # =========== Menu Action Slots ===========
+    
+    def _on_export_history(self):
+        """Export chat history to a file"""
+        if not self.message_history:
+            QMessageBox.information(self, "导出聊天记录", "当前没有聊天记录可以导出。")
+            return
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出聊天记录",
+            f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            "Text Files (*.txt);;JSON Files (*.json);;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    for msg in self.message_history:
+                        f.write(f"[{msg['timestamp']}] {msg['sender']}: {msg['content']}\n")
+                self.statusBar().showMessage(f"聊天记录已导出到: {file_path}", 5000)
+            except Exception as e:
+                QMessageBox.critical(self, "导出失败", f"无法导出聊天记录: {str(e)}")
+    
+    def _on_close_to_tray(self):
+        """Minimize window to system tray instead of closing"""
+        # TODO: Implement system tray icon if needed
+        self.hide()
+        self.statusBar().showMessage("窗口已最小化到托盘", 3000)
+    
+    def _on_theme_changed(self, theme: str):
+        """Handle theme change between light and dark mode"""
+        ThemeManager.set_theme(theme)
+        
+        if theme == "light":
+            self.light_mode_action.setChecked(True)
+            self.dark_mode_action.setChecked(False)
+            self.statusBar().showMessage("已切换到浅色模式", 3000)
+        else:
+            self.light_mode_action.setChecked(False)
+            self.dark_mode_action.setChecked(True)
+            self.statusBar().showMessage("已切换到深色模式", 3000)
+            
+        self._update_styles()
+    
+    def _on_toggle_sidebar(self):
+        """Toggle sidebar visibility"""
+        # Find the sidebar widget (first child of splitter)
+        for widget in self.findChildren(QSplitter):
+            if widget.count() > 0:
+                sidebar = widget.widget(0)
+                if sidebar and sidebar.objectName() == "sidebar":
+                    self._sidebar_visible = not self._sidebar_visible
+                    sidebar.setVisible(self._sidebar_visible)
+                    status = "显示" if self._sidebar_visible else "隐藏"
+                    self.statusBar().showMessage(f"侧边栏已{status}", 3000)
+                    break
+    
+    def _on_zoom_in(self):
+        """Increase UI zoom level"""
+        current = ThemeManager.get_zoom_level()
+        if current < 200:
+            ThemeManager.set_zoom_level(current + 10)
+            self._update_styles()
+            self.statusBar().showMessage(f"缩放: {ThemeManager.get_zoom_level()}%", 2000)
+    
+    def _on_zoom_out(self):
+        """Decrease UI zoom level"""
+        current = ThemeManager.get_zoom_level()
+        if current > 50:
+            ThemeManager.set_zoom_level(current - 10)
+            self._update_styles()
+            self.statusBar().showMessage(f"缩放: {ThemeManager.get_zoom_level()}%", 2000)
+    
+    def _update_styles(self):
+        """Apply styles based on current theme and zoom"""
+        # Get appropriate theme class (Theme or DarkTheme)
+        ThemeClass = ThemeManager.get_theme_class()
+        
+        # Apply global stylesheet to the Application (handles ALL widgets including dialogs)
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(ThemeClass.get_stylesheet())
+        else:
+            # Fallback if no app instance (unlikely)
+            self.setStyleSheet(ThemeClass.get_stylesheet())
+        
+        # Helper to recursively polish widgets
+        def distinct_polish(widget):
+            self.style().unpolish(widget)
+            self.style().polish(widget)
+            for child in widget.findChildren(QWidget):
+                self.style().unpolish(child)
+                self.style().polish(child)
+
+        # Force polish on main window
+        distinct_polish(self)
+        
+        # Explicitly polish the Right Tabs (QTabWidget) and its children
+        # This fixes issues where pages inside tabs don't update immediately
+        for widget in self.findChildren(QTabWidget):
+             distinct_polish(widget)
+        
+        # Update Suggestion Panel Shadow (custom theme handling)
+        if hasattr(self, 'suggestion_panel'):
+            self.suggestion_panel.update_theme()
+
+    def _apply_zoom(self):
+        # Deprecated by _update_styles which handles font size via stylesheet
+        pass
+    
+    def _on_open_preferences(self):
+        """Open preferences dialog"""
+        # TODO: Create a full preferences dialog
+        QMessageBox.information(
+            self,
+            "偏好设置",
+            "偏好设置功能即将推出。\n\n"
+            "计划设置项：\n"
+            "• 语言设置\n"
+            "• 消息字体大小\n"
+            "• 自动保存设置\n"
+            "• 服务器连接配置"
+        )
+    
+    def _on_toggle_notifications(self, checked: bool):
+        """Toggle notification settings"""
+        status = "开启" if checked else "关闭"
+        self.statusBar().showMessage(f"消息通知已{status}", 3000)
+        # TODO: Store preference and apply to notification system
+    
+    def _on_show_shortcuts(self):
+        """Show keyboard shortcuts dialog"""
+        shortcuts_text = """
+<h3>键盘快捷键</h3>
+<table style="border-collapse: collapse; width: 100%;">
+<tr><td><b>Ctrl+S</b></td><td>导出聊天记录</td></tr>
+<tr><td><b>Ctrl+W</b></td><td>关闭窗口（最小化到托盘）</td></tr>
+<tr><td><b>Ctrl+Q</b></td><td>退出应用程序</td></tr>
+<tr><td><b>Ctrl+B</b></td><td>切换侧边栏</td></tr>
+<tr><td><b>Ctrl++</b></td><td>放大</td></tr>
+<tr><td><b>Ctrl+-</b></td><td>缩小</td></tr>
+<tr><td><b>Ctrl+M</b></td><td>查看记忆</td></tr>
+<tr><td><b>Ctrl+,</b></td><td>偏好设置</td></tr>
+<tr><td><b>Ctrl+/</b></td><td>显示快捷键</td></tr>
+<tr><td><b>Enter</b></td><td>发送消息</td></tr>
+</table>
+        """
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("键盘快捷键")
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setText(shortcuts_text)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.exec()
+    
+    def _on_check_updates(self):
+        """Check for application updates"""
+        # TODO: Implement actual update checking logic
+        QMessageBox.information(
+            self,
+            "检查更新",
+            "当前版本: v1.1\n\n"
+            "您使用的是最新版本！"
+        )
+
 
