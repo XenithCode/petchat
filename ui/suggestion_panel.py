@@ -95,6 +95,31 @@ class SuggestionPanel(QWidget):
         self.suggestion_layout.addWidget(card)
         self.suggestion_layout.addStretch()
     
+    def show_loading(self):
+        """Show loading indicator while waiting for AI response"""
+        self._clear_suggestions()
+        
+        loading_card = QWidget()
+        loading_layout = QVBoxLayout()
+        loading_layout.setSpacing(8)
+        
+        loading_label = QLabel("🤔 AI 正在思考中...")
+        loading_label.setStyleSheet(
+            f"font-size: 14px; color: {Theme.TEXT_SECONDARY}; padding: 20px;"
+            f" qproperty-alignment: AlignCenter;"
+        )
+        loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_layout.addWidget(loading_label)
+        
+        loading_card.setLayout(loading_layout)
+        loading_card.setStyleSheet(
+            f"QWidget {{ background-color: {Theme.BG_MUTED}; border: 1px solid {Theme.BG_BORDER};"
+            f" border-radius: {Theme.RADIUS_MD}px; padding: 10px; margin: 5px; }}"
+        )
+        
+        self.suggestion_layout.addWidget(loading_card)
+        self.suggestion_layout.addStretch()
+    
     def _clear_suggestions(self):
         """Clear all suggestion cards"""
         while self.suggestion_layout.count():

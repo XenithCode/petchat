@@ -13,8 +13,8 @@ import json
 from ui.pet_widget import PetWidget
 from ui.suggestion_panel import SuggestionPanel
 from ui.memory_viewer import MemoryViewer
-from ui.api_config_dialog import APIConfigDialog
 from ui.theme import Theme
+# Note: APIConfigDialog removed - API config now handled by server
 
 
 class MainWindow(QMainWindow):
@@ -194,11 +194,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(exit_action)
         
         self.settings_menu = menubar.addMenu("设置")
-        self.api_action = QAction("AI 配置", self)
-        self.api_action.setShortcut("Ctrl+K")
-        self.api_action.triggered.connect(self._show_api_config)
-        self.settings_menu.addAction(self.api_action)
-        self.api_action.setEnabled(True) # AI service can be configured by any client
+        # Note: "AI 配置" menu removed - API Key now configured on server
         
         # Add Reset User action
         reset_user_action = QAction("🔄 重置用户数据", self)
@@ -619,20 +615,17 @@ class MainWindow(QMainWindow):
         """Update memory viewer"""
         self.memory_viewer.update_memories(memories)
     
-    def _show_api_config(self):
-        """Show API configuration dialog"""
-        dialog = APIConfigDialog(parent=self)
-        dialog.config_applied.connect(self._on_api_config_applied)
-        dialog.config_reset.connect(self._on_api_config_reset)
-        dialog.exec()
+    def show_ai_loading(self):
+        """Show AI loading indicator in suggestion panel"""
+        self.suggestion_panel.show_loading()
     
-    def _on_api_config_applied(self, api_key: str, api_base: str, persist: bool):
-        """Handle API config apply"""
-        self.api_config_changed.emit(api_key, api_base, persist)
+    def clear_ai_panels(self):
+        """Clear AI panels (suggestion and optionally memories) when switching conversations"""
+        self.suggestion_panel.clear()
+        # Note: memories are per-user, not per-conversation, so we don't clear them here
     
-    def _on_api_config_reset(self):
-        """Handle API config reset"""
-        self.api_config_reset.emit()
+    # Note: _show_api_config, _on_api_config_applied, _on_api_config_reset removed
+    # API configuration is now handled by the server dashboard
     
     def _show_memories_tab(self):
         """Switch to memories tab"""

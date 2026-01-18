@@ -5,33 +5,15 @@ Manages TCP connection to the server and handles message routing.
 import socket
 import threading
 import json
-import struct
-import zlib
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from PyQt6.QtCore import QObject, pyqtSignal
 
-
-# Protocol constants
-HEADER_SIZE = 8  # 4 bytes length + 4 bytes CRC32
-
-
-def pack_message(data: dict) -> bytes:
-    """Pack a message with length header and CRC32"""
-    payload = json.dumps(data).encode('utf-8')
-    length = len(payload)
-    checksum = zlib.crc32(payload) & 0xFFFFFFFF
-    header = struct.pack('>II', length, checksum)
-    return header + payload
-
-
-def unpack_header(header_bytes: bytes) -> tuple:
-    """Unpack header to get (length, crc32)"""
-    return struct.unpack('>II', header_bytes)
-
-
-def verify_crc(payload: bytes, expected_crc: int) -> bool:
-    """Verify CRC32 checksum"""
-    return (zlib.crc32(payload) & 0xFFFFFFFF) == expected_crc
+# Use shared protocol module
+from core.protocol import (
+    Protocol, MessageType, HEADER_SIZE,
+    pack_message, unpack_header, verify_crc,
+    AIAnalysisRequest
+)
 
 
 class NetworkManager(QObject):
@@ -55,6 +37,11 @@ class NetworkManager(QObject):
     
     # Typing signal
     typing_status_received = pyqtSignal(str, str, bool)  # user_id, user_name, is_typing
+    
+    # AI signals - server sends AI results to client
+    ai_suggestion_received = pyqtSignal(str, dict)  # conversation_id, suggestion dict
+    ai_emotion_received = pyqtSignal(str, dict)  # conversation_id, emotion scores
+    ai_memory_received = pyqtSignal(str, list)  # conversation_id, memories list
 
     def __init__(self):
         super().__init__()
@@ -148,6 +135,23 @@ class NetworkManager(QObject):
             "sender_name": self.user_name,
             "is_typing": is_typing
         })
+
+    def send_ai_analysis_request(self, conversation_id: str, context_snapshot: List[Dict[str, Any]] = None):
+        """
+        Send AI analysis request to server.
+        
+        Args:
+            conversation_id: ID of the conversation to analyze
+            context_snapshot: Recent messages for cold-start recovery (optional but recommended)
+                             Server uses this if its session is empty or stale.
+        """
+        request = AIAnalysisRequest(
+            conversation_id=conversation_id,
+            sender_id=self.user_id,
+            sender_name=self.user_name,
+            context_snapshot=context_snapshot
+        )
+        self._send_message(request.to_dict())
 
     def _send_message(self, message: dict):
         """Send a message to the server"""
@@ -254,3 +258,26 @@ class NetworkManager(QObject):
                     message.get("sender_name", "Someone"),
                     message.get("is_typing", False)
                 )
+        
+        # AI message handlers - from server
+        elif msg_type == MessageType.AI_SUGGESTION.value:
+            self.ai_suggestion_received.emit(
+                message.get("conversation_id", ""),
+                {
+                    "title": message.get("title", "AI 建议"),
+                    "content": message.get("content", ""),
+                    "type": message.get("suggestion_type", "suggestion")
+                }
+            )
+        
+        elif msg_type == MessageType.AI_EMOTION.value:
+            self.ai_emotion_received.emit(
+                message.get("conversation_id", ""),
+                message.get("scores", {})
+            )
+        
+        elif msg_type == MessageType.AI_MEMORY.value:
+            self.ai_memory_received.emit(
+                message.get("conversation_id", ""),
+                message.get("memories", [])
+            )

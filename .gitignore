@@ -28,9 +28,6 @@ wheels/
 MANIFEST
 
 # --- PyInstaller ---
-#  Usually creates a 'build' and 'dist' folder, covered above.
-#  Specific spec files can be committed if customization is needed, 
-#  but often auto-generated ones are ignored.
 *.spec
 
 # --- Nuitka ---
@@ -42,12 +39,13 @@ MANIFEST
 *.db
 *.sqlite
 *.sqlite3
-# SQLite temporary files
 *-journal
+petchat.db
 
 # --- Configuration & Secrets ---
-# Contains API keys or local settings
 config.json
+server_config.json
+server_token_usage.json
 .env
 config/settings_local.py
 
@@ -60,28 +58,24 @@ logs/
 .coverage
 htmlcov/
 .mypy_cache/
+test_lm_studio.py
 
 # --- IDEs / Editors ---
-# VS Code
 .vscode/
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-# PyCharm / IntelliJ
 .idea/
-# General
 *.swp
 *.swo
 *~
 
 # --- OS Specific ---
-# Windows
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
-# macOS
 .DS_Store
 .AppleDouble
 .LSOverride

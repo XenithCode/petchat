@@ -1,38 +1,75 @@
-"""AI service integration for emotion recognition, memory extraction, and decision support"""
+"""AI service integration for emotion recognition, memory extraction, and decision support.
+Uses requests library for better compatibility with local LLMs (LM Studio, Ollama, etc.)
+"""
 import os
 import json
 import re
-from typing import List, Dict, Optional, Tuple
-from openai import OpenAI
+import requests
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
 class AIService:
-    """Handles all AI-related operations"""
+    """Handles all AI-related operations using direct HTTP requests"""
     
-    def __init__(self, api_key: Optional[str] = None, api_base: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, api_base: Optional[str] = None, 
+                 model: Optional[str] = None, timeout: float = 60.0):
         """
         Initialize AI service
         
         Args:
-            api_key: OpenAI API key (if None, tries to read from env)
-            api_base: API base URL (if None, uses default OpenAI or env)
+            api_key: API key (can be dummy for local LLMs)
+            api_base: API base URL (e.g., http://127.0.0.1:1235/v1)
+            model: Model name
+            timeout: Request timeout in seconds
         """
-        # Try provided values first, then env, then raise error
-        api_key = api_key or os.getenv("OPENAI_API_KEY")
-        api_base = api_base or os.getenv("OPENAI_API_BASE")
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "lm-studio")
+        self.api_base = api_base or os.getenv("OPENAI_API_BASE", "http://127.0.0.1:1235/v1")
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.timeout = timeout
         
-        if not api_key:
-            raise ValueError("OpenAI API key is required. Please configure it in the application settings.")
+        # Ensure base URL doesn't end with /
+        self.api_base = self.api_base.rstrip('/')
+    
+    def _make_request(self, messages: List[Dict], temperature: float = 0.3, 
+                      max_tokens: int = 500) -> Optional[str]:
+        """Make a chat completion request using requests library"""
+        url = f"{self.api_base}/chat/completions"
         
-        client_kwargs = {"api_key": api_key}
-        if api_base:
-            client_kwargs["base_url"] = api_base
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
         
-        self.client = OpenAI(**client_kwargs)
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            return data["choices"][0]["message"]["content"].strip()
+        except requests.Timeout:
+            print(f"[AI] Request timed out after {self.timeout}s")
+            return None
+        except requests.RequestException as e:
+            print(f"[AI] Request failed: {e}")
+            return None
+        except (KeyError, IndexError) as e:
+            print(f"[AI] Failed to parse response: {e}")
+            return None
     
     def analyze_emotion(self, recent_messages: List[Dict]) -> Dict[str, float]:
         """
@@ -63,36 +100,26 @@ class AIService:
 
 只返回JSON，不要其他说明。"""
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "你是一个情绪分析助手，专注于分析对话的整体氛围。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=200
-            )
-            
-            content = response.choices[0].message.content.strip()
-            # Try to extract JSON from response
+        messages = [
+            {"role": "system", "content": "你是一个情绪分析助手，专注于分析对话的整体氛围。"},
+            {"role": "user", "content": prompt}
+        ]
+        
+        content = self._make_request(messages, temperature=0.3, max_tokens=200)
+        
+        if content:
             emotion_data = self._extract_json(content)
             if emotion_data and isinstance(emotion_data, dict):
-                # Ensure all emotion types have valid scores
                 default_emotions = {"neutral": 0.0, "happy": 0.0, "tense": 0.0, "negative": 0.0}
                 default_emotions.update({k: float(v) for k, v in emotion_data.items() if k in default_emotions})
-                # Normalize to sum to 1.0
                 total = sum(default_emotions.values())
                 if total > 0:
                     default_emotions = {k: v / total for k, v in default_emotions.items()}
                 else:
                     default_emotions = {"neutral": 1.0}
                 return default_emotions
-            else:
-                return {"neutral": 1.0}
-        except Exception as e:
-            print(f"Error analyzing emotion: {e}")
-            return {"neutral": 1.0}
+        
+        return {"neutral": 1.0}
     
     def extract_memories(self, recent_messages: List[Dict]) -> List[Dict]:
         """
@@ -122,23 +149,18 @@ class AIService:
 
 只返回JSON数组，不要其他说明。"""
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "你是一个信息提取助手，专注于从对话中提取关键信息。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=500
-            )
-            
-            content = response.choices[0].message.content.strip()
+        messages = [
+            {"role": "system", "content": "你是一个信息提取助手，专注于从对话中提取关键信息。"},
+            {"role": "user", "content": prompt}
+        ]
+        
+        content = self._make_request(messages, temperature=0.3, max_tokens=500)
+        
+        if content:
             memories = self._extract_json_array(content)
             return memories if isinstance(memories, list) else []
-        except Exception as e:
-            print(f"Error extracting memories: {e}")
-            return []
+        
+        return []
     
     def generate_suggestion(self, recent_messages: List[Dict]) -> Optional[Dict]:
         """
@@ -168,31 +190,23 @@ class AIService:
 
 只返回JSON对象或null，不要其他说明。"""
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "你是一个决策辅助助手，帮助用户整理计划和安排。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.5,
-                max_tokens=300
-            )
-            
-            content = response.choices[0].message.content.strip()
+        messages = [
+            {"role": "system", "content": "你是一个决策辅助助手，帮助用户整理计划和安排。"},
+            {"role": "user", "content": prompt}
+        ]
+        
+        content = self._make_request(messages, temperature=0.5, max_tokens=300)
+        
+        if content:
             if content.lower() in ['null', 'none', '']:
                 return None
-            
             suggestion = self._extract_json(content)
             return suggestion if isinstance(suggestion, dict) else None
-        except Exception as e:
-            print(f"Error generating suggestion: {e}")
-            return None
+        
+        return None
     
     def _extract_json(self, text: str) -> Optional[Dict]:
         """Extract JSON object from text"""
-        # Try to find JSON object (handles nested structures)
-        # Look for { ... } pattern
         brace_count = 0
         start_idx = -1
         
@@ -211,7 +225,6 @@ class AIService:
                         pass
                     start_idx = -1
         
-        # Fallback: try parsing entire text
         try:
             return json.loads(text)
         except json.JSONDecodeError:
@@ -219,7 +232,6 @@ class AIService:
     
     def _extract_json_array(self, text: str) -> List:
         """Extract JSON array from text"""
-        # Try to find JSON array [ ... ]
         bracket_count = 0
         start_idx = -1
         
@@ -238,10 +250,8 @@ class AIService:
                         pass
                     start_idx = -1
         
-        # Fallback: try parsing entire text
         try:
             data = json.loads(text)
             return data if isinstance(data, list) else []
         except json.JSONDecodeError:
             return []
-
