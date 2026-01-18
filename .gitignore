@@ -1,4 +1,4 @@
-# Python
+# --- Python Core ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -6,7 +6,10 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
+
+# --- Distribution / Packaging ---
 build/
 develop-eggs/
 dist/
@@ -22,38 +25,64 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Environment
-.env
-.venv
+# --- PyInstaller ---
+#  Usually creates a 'build' and 'dist' folder, covered above.
+#  Specific spec files can be committed if customization is needed, 
+#  but often auto-generated ones are ignored.
+*.spec
 
-# Database
+# --- Nuitka ---
+*.build/
+*.dist/
+*.onefile-build/
+
+# --- Database ---
 *.db
 *.sqlite
 *.sqlite3
+# SQLite temporary files
+*-journal
 
-# Config (may contain sensitive data)
+# --- Configuration & Secrets ---
+# Contains API keys or local settings
 config.json
+.env
+config/settings_local.py
 
-# Build artifacts
-build/
-dist/
-*.spec
-*.exe
-*.onefile-build/
+# --- Logs ---
+*.log
+logs/
 
-# IDE
+# --- Testing / Quality Assurance ---
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# --- IDEs / Editors ---
+# VS Code
 .vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+# PyCharm / IntelliJ
 .idea/
+# General
 *.swp
 *.swo
 *~
 
-# OS
-.DS_Store
+# --- OS Specific ---
+# Windows
 Thumbs.db
-
-# Nuitka
-*.build/
-*.dist/
-*.onefile-build/
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*

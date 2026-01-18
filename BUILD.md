@@ -1,6 +1,6 @@
 # 打包指南
 
-## 使用 PyInstaller（推荐，简单）
+## 使用 PyInstaller（推荐）
 
 ### 1. 安装 PyInstaller
 
@@ -8,24 +8,25 @@
 pip install pyinstaller
 ```
 
-### 2. 打包
+### 2. 打包客户端
 
 ```bash
-# 方法1：使用spec文件
-pyinstaller build.spec
-
-# 方法2：使用命令行
 python -m PyInstaller --name=pet-chat --onefile --windowed main.py
-
-# 方法3：使用构建脚本
-python build_exe.py pyinstaller
 ```
 
-### 3. 输出
+### 3. 打包服务器
 
-打包完成后，可执行文件位于 `dist/pet-chat.exe`
+```bash
+python -m PyInstaller --name=pet-chat-server --onefile server.py
+```
 
-## 使用 Nuitka（PRD指定）
+### 4. 输出
+
+打包完成后，可执行文件位于 `dist/` 目录：
+- `dist/pet-chat.exe` - 客户端
+- `dist/pet-chat-server.exe` - 服务器
+
+## 使用 Nuitka（可选）
 
 ### 1. 安装 Nuitka
 
@@ -36,16 +37,12 @@ pip install nuitka
 ### 2. 打包
 
 ```bash
-# 使用构建脚本
-python build_exe.py nuitka
-
-# 或直接使用命令
+# 客户端
 python -m nuitka --standalone --onefile --windows-disable-console --enable-plugin=pyqt6 main.py
+
+# 服务器
+python -m nuitka --standalone --onefile --enable-plugin=pyqt6 server.py
 ```
-
-### 3. 输出
-
-打包完成后，可执行文件位于 `dist/pet-chat.exe`
 
 ## 注意事项
 
@@ -58,32 +55,36 @@ python -m nuitka --standalone --onefile --windows-disable-console --enable-plugi
    - Nuitka: 约 30-80MB
 
 3. **首次运行**：
-   - 打包后的exe首次运行可能较慢
-   - 需要配置API Key才能使用AI功能
+   - 打包后的 exe 首次运行可能较慢
+   - 需要配置 API Key 才能使用 AI 功能
 
 4. **配置文件**：
-   - `config.json` 会在exe同目录创建
-   - `petchat.db` 会在exe同目录创建
+   - `config.json` 会在 exe 同目录创建
+   - `petchat.db` 会在 exe 同目录创建
 
-## 测试打包结果
+## 部署说明
 
-1. 在另一台没有Python环境的Windows机器上测试
-2. 确保所有功能正常：
-   - Host/Guest连接
-   - 消息收发
-   - AI功能（需要配置API Key）
-   - 记忆查看
+### 服务器部署
+
+1. 将 `pet-chat-server.exe` 部署到服务器
+2. 运行服务器，默认监听 `0.0.0.0:8888`
+3. 确保防火墙允许 8888 端口的 TCP 连接
+
+### 客户端分发
+
+1. 将 `pet-chat.exe` 分发给用户
+2. 用户启动时输入服务器 IP 地址
+3. 连接成功后即可开始聊天
 
 ## 常见问题
 
-### PyInstaller打包后无法运行
+### PyInstaller 打包后无法运行
 
-- 检查是否有缺失的DLL
+- 检查是否有缺失的 DLL
 - 尝试添加 `--collect-all=PyQt6`
-- 检查控制台错误信息（临时添加 `console=True`）
+- 临时使用 `--console` 查看错误信息
 
-### Nuitka打包失败
+### Nuitka 打包失败
 
-- 确保安装了C++编译器（Visual Studio Build Tools）
+- 确保安装了 C++ 编译器（Visual Studio Build Tools）
 - 尝试使用 `--standalone` 模式
-
