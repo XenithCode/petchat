@@ -126,4 +126,6 @@ python -m PyInstaller --name=pet-chat-server --onefile server.py
 
 ## 开源协议
 
-本项目采用 MIT License 协议。
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+本项目采用 **GNU GPLv3** 协议。
