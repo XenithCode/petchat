@@ -3,3 +3,4 @@ pyqtgraph
 requests
 numpy
 python-dotenv
+google-generativeai
